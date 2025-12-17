@@ -24,8 +24,10 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const analytics = getAnalytics(app);
         const tripRef = ref(db, 'takamatsu_trip');
 
+        // 監聽雲端資料變化
         onValue(tripRef, (snapshot) => {
             const data = snapshot.val() || { names: {a: "成員 A", b: "成員 B"}, itinerary: {}, expenses: {a: 0, b: 0}, expense_logs: {} };
             renderUI(data);
@@ -42,7 +44,7 @@
             document.getElementById('totalA').innerText = `¥${(data.expenses?.a || 0).toLocaleString()}`;
             document.getElementById('totalB').innerText = `¥${(data.expenses?.b || 0).toLocaleString()}`;
 
-            // 更新行程
+            // 更新行程 Day 1-3
             for (let day = 1; day <= 3; day++) {
                 const listEl = document.getElementById(`list-day${day}`);
                 const dayData = data.itinerary ? data.itinerary[`day${day}`] : null;
@@ -54,27 +56,34 @@
                         listEl.innerHTML += `
                             <div class="flex items-center justify-between bg-white p-3 rounded-lg border-l-4 border-[#B4A582] mb-2 shadow-sm">
                                 <div><span class="font-bold mr-3 text-[#B4A582]">${item.time}</span><span class="text-gray-700">${item.loc}</span></div>
-                                <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-gray-300 px-2">✕</button>
+                                <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-gray-300 hover:text-red-400 px-2">✕</button>
                             </div>`;
                     });
                 }
             }
 
-            // 更新費用項目清單
+            // 更新費用項目清單 (顯示最新 10 筆)
             const logEl = document.getElementById('expense-logs');
             logEl.innerHTML = "";
             if (data.expense_logs) {
-                const logs = Object.entries(data.expense_logs).reverse(); // 最新顯示在最前
+                const logs = Object.entries(data.expense_logs).reverse().slice(0, 10);
                 logs.forEach(([id, log]) => {
                     logEl.innerHTML += `
-                        <div class="flex justify-between text-sm py-2 border-b border-[#B4A582]/10">
-                            <span class="text-gray-600">${log.item} (${log.payer === 'A' ? (data.names?.a || 'A') : (data.names?.b || 'B')})</span>
-                            <span class="font-bold text-[#B4A582]">¥${log.amount.toLocaleString()}</span>
+                        <div class="flex justify-between items-center text-sm py-2 border-b border-[#B4A582]/10">
+                            <div>
+                                <p class="text-gray-700 font-medium">${log.item}</p>
+                                <p class="text-[10px] text-gray-400">${log.payer === 'A' ? (data.names?.a || 'A') : (data.names?.b || 'B')} 支付</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="font-bold text-[#B4A582]">¥${log.amount.toLocaleString()}</span>
+                                <button onclick="window.deleteExpense('${id}', '${log.payer}', ${log.amount})" class="text-gray-300 text-xs">✕</button>
+                            </div>
                         </div>`;
                 });
             }
         }
 
+        // 操作函數
         window.updateNames = () => {
             set(ref(db, 'takamatsu_trip/names'), {
                 a: document.getElementById('nameA').value || "成員 A",
@@ -100,31 +109,49 @@
             const amount = parseFloat(document.getElementById('expAmount').value);
             if(isNaN(amount)) return;
             
-            // 1. 增加總額
+            // 增加總額
             const totalPath = `takamatsu_trip/expenses/${payer.toLowerCase()}`;
             onValue(ref(db, totalPath), (snapshot) => {
                 const current = snapshot.val() || 0;
                 set(ref(db, totalPath), current + amount);
             }, { onlyOnce: true });
 
-            // 2. 記錄詳細清單
+            // 記錄清單
             push(ref(db, 'takamatsu_trip/expense_logs'), {
-                payer, item, amount, time: Date.now()
+                payer, item, amount, timestamp: Date.now()
             });
             
             document.getElementById('expItem').value = "";
             document.getElementById('expAmount').value = "";
         };
+
+        window.deleteExpense = (logId, payer, amount) => {
+            if(!confirm("確定要刪除這筆支出嗎？總額也會扣除。")) return;
+            remove(ref(db, `takamatsu_trip/expense_logs/${logId}`));
+            const totalPath = `takamatsu_trip/expenses/${payer.toLowerCase()}`;
+            onValue(ref(db, totalPath), (snapshot) => {
+                const current = snapshot.val() || 0;
+                set(ref(db, totalPath), Math.max(0, current - amount));
+            }, { onlyOnce: true });
+        };
     </script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #B4A582; min-height: 100vh; }
-        .glass-card { background: rgba(180, 165, 130, 0.08); border: 1px solid rgba(180, 165, 130, 0.2); border-radius: 1.5rem; padding: 1.5rem; margin-bottom: 1.5rem; }
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            background-color: #FFFFFF; color: #B4A582; 
+            min-height: 100vh;
+        }
+        .glass-card { 
+            background: rgba(180, 165, 130, 0.08); 
+            border: 1px solid rgba(180, 165, 130, 0.2);
+            border-radius: 1.5rem; padding: 1.5rem; margin-bottom: 1.5rem;
+        }
         input, select {
             background-color: #fcfbf9 !important; border: 1px solid rgba(180, 165, 130, 0.3) !important;
             color: #6d644d !important; border-radius: 0.8rem !important; 
-            padding: 0.8rem 1rem 0.8rem 2rem !important; /* 確保縮排距離 */
+            padding: 0.8rem 1rem 0.8rem 2rem !important;
             outline: none; width: 100%; -webkit-appearance: none;
         }
         input::placeholder { color: #B4A582; opacity: 0.5; }
@@ -136,9 +163,11 @@
 
     <header class="p-8 text-center">
         <h1 class="text-3xl font-bold tracking-wider">高松 19/12‧20/12‧21/12</h1>
+        <p class="mt-2 opacity-70 text-sm">✨ 即時雲端同步中</p>
     </header>
 
     <div class="max-w-md mx-auto px-5">
+
         <section class="glass-card">
             <h2 class="font-bold mb-4">👤 成員設定</h2>
             <div class="grid grid-cols-2 gap-4">
@@ -154,6 +183,26 @@
                 <input type="time" id="time-day1" style="width: auto;">
                 <input type="text" id="loc-day1" placeholder="輸入地點" class="col-span-2">
                 <button onclick="addItem(1)" class="btn-add col-span-3">＋ 新增行程</button>
+            </div>
+        </section>
+
+        <section class="glass-card">
+            <div class="day-header">🗓️ Day 2 (20/12)</div>
+            <div id="list-day2"></div>
+            <div class="grid grid-cols-3 gap-2 mt-4">
+                <input type="time" id="time-day2" style="width: auto;">
+                <input type="text" id="loc-day2" placeholder="輸入地點" class="col-span-2">
+                <button onclick="addItem(2)" class="btn-add col-span-3">＋ 新增行程</button>
+            </div>
+        </section>
+
+        <section class="glass-card">
+            <div class="day-header">🗓️ Day 3 (21/12)</div>
+            <div id="list-day3"></div>
+            <div class="grid grid-cols-3 gap-2 mt-4">
+                <input type="time" id="time-day3" style="width: auto;">
+                <input type="text" id="loc-day3" placeholder="輸入地點" class="col-span-2">
+                <button onclick="addItem(3)" class="btn-add col-span-3">＋ 新增行程</button>
             </div>
         </section>
 
@@ -175,16 +224,17 @@
                     <option value="A">由 <span class="display-name-a">成員 A</span> 付款</option>
                     <option value="B">由 <span class="display-name-b">成員 B</span> 付款</option>
                 </select>
-                <input type="text" id="expItem" placeholder="支出項目 (如：一鶴骨付鳥)">
+                <input type="text" id="expItem" placeholder="支出項目 (如：午餐)">
                 <input type="number" id="expAmount" placeholder="輸入金額">
-                <button onclick="addExpense()" class="btn-add mt-2">記錄支出</button>
+                <button onclick="addExpense()" class="btn-add mt-2">記錄這筆支出</button>
             </div>
 
             <div class="mt-6 pt-4 border-t border-[#B4A582]/20">
-                <p class="text-xs font-bold mb-2 opacity-60">最近支出紀錄：</p>
-                <div id="expense-logs" class="max-h-40 overflow-y-auto"></div>
+                <p class="text-[11px] font-bold mb-3 opacity-60">最近支出紀錄：</p>
+                <div id="expense-logs" class="space-y-1"></div>
             </div>
         </section>
+
     </div>
 </body>
 </html>
