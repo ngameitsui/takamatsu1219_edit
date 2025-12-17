@@ -27,6 +27,8 @@
         const db = getDatabase(app);
         const tripRef = ref(db, 'takamatsu_trip');
 
+        let currentEditId = { 1: null, 2: null, 3: null };
+
         onValue(tripRef, (snapshot) => {
             const data = snapshot.val() || { names: {a: "成員 A", b: "成員 B"}, itinerary: {}, expenses: {a: 0, b: 0}, expense_logs: {} };
             renderUI(data);
@@ -48,35 +50,40 @@
                     const items = Object.entries(dayData).map(([id, val]) => ({ id, ...val }));
                     items.sort((a, b) => a.time.localeCompare(b.time));
                     items.forEach(item => {
+                        const hasUrl = item.url && item.url.startsWith('http');
                         listEl.innerHTML += `
-                            <div class="bg-[#fdfbf7] border border-[#B4A582]/20 rounded-2xl p-4 mb-4 shadow-sm relative">
-                                <div class="flex justify-between items-start mb-2">
-                                    <span class="text-[#B4A582] font-bold text-sm bg-white px-3 py-1 rounded-full border border-[#B4A582]/20">${item.time}</span>
-                                    <div class="flex gap-3">
-                                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.loc)}" target="_blank" class="text-[#B4A582] opacity-60"><i class="fa-solid fa-location-dot"></i></a>
-                                        <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-gray-300">✕</button>
+                            <div class="bg-[#fdfbf7] border border-[#B4A582]/20 rounded-3xl p-5 mb-5 shadow-sm">
+                                <div class="flex justify-between items-start mb-3">
+                                    <span class="text-[#B4A582] font-bold text-sm bg-white px-4 py-1 rounded-full border border-[#B4A582]/30">${item.time}</span>
+                                    <div class="flex gap-4 text-gray-400">
+                                        <button onclick='window.prepareEdit(${day}, "${item.id}", ${JSON.stringify(item)})' class="hover:text-[#B4A582]"><i class="fa-solid fa-pen-to-square"></i></button>
+                                        <button onclick="window.deleteItem(${day}, '${item.id}')" class="hover:text-red-400">✕</button>
                                     </div>
                                 </div>
-                                <h3 class="font-bold text-gray-800 text-lg mb-1 ml-1">${item.loc}</h3>
-                                <div class="text-xs text-[#B4A582] flex items-center mb-2 ml-1">
-                                    <i class="fa-solid fa-train-subway mr-2"></i> ${item.trans || '未設定交通'}
+                                <h3 class="font-bold text-gray-800 text-xl mb-2">${item.loc}</h3>
+                                <div class="space-y-1 text-sm">
+                                    <p class="text-[#B4A582] flex items-center"><i class="fa-solid fa-train-subway w-6"></i> ${item.trans || '-'}</p>
+                                    <p class="text-gray-500 flex items-start"><i class="fa-solid fa-align-left w-6 mt-1"></i> <span class="flex-1">${item.note || '-'}</span></p>
                                 </div>
-                                <p class="text-sm text-gray-500 leading-relaxed border-t border-dashed border-[#B4A582]/20 pt-2 mt-2 ml-1">${item.note || '-'}</p>
+                                <div class="flex gap-2 mt-4 pt-3 border-t border-dashed border-[#B4A582]/20">
+                                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.loc)}" target="_blank" class="flex-1 text-center py-2 bg-white border border-[#B4A582]/30 rounded-xl text-xs text-[#B4A582] font-bold">📍 導航</a>
+                                    ${hasUrl ? `<a href="${item.url}" target="_blank" class="flex-1 text-center py-2 bg-[#B4A582] rounded-xl text-xs text-white font-bold">🔗 網址</a>` : ''}
+                                </div>
                             </div>`;
                     });
                 }
             }
 
+            // 渲染費用紀錄
             const logEl = document.getElementById('expense-logs');
             logEl.innerHTML = "";
             if (data.expense_logs) {
-                Object.entries(data.expense_logs).reverse().slice(0, 20).forEach(([id, log]) => {
+                Object.entries(data.expense_logs).reverse().slice(0, 15).forEach(([id, log]) => {
                     logEl.innerHTML += `
-                        <div class="flex justify-between items-center py-3 border-b border-gray-50">
-                            <div><p class="text-gray-800 text-sm">${log.item}</p>
-                            <p class="text-[10px] text-gray-400">${log.payer === 'A' ? (data.names?.a || 'A') : (data.names?.b || 'B')} 支付</p></div>
-                            <div class="flex items-center gap-3"><span class="font-bold text-[#B4A582]">¥${log.amount.toLocaleString()}</span>
-                            <button onclick="window.deleteExpense('${id}', '${log.payer}', ${log.amount})" class="text-gray-300">✕</button></div>
+                        <div class="flex justify-between items-center py-4 border-b border-gray-50">
+                            <div><p class="text-gray-800 text-sm font-medium">${log.item}</p><p class="text-[10px] text-gray-400">${log.payer === 'A' ? (data.names?.a || 'A') : (data.names?.b || 'B')} 支付</p></div>
+                            <div class="flex items-center gap-4"><span class="font-bold text-[#B4A582] text-lg">¥${log.amount.toLocaleString()}</span>
+                            <button onclick="window.deleteExpense('${id}', '${log.payer}', ${log.amount})" class="text-gray-200">✕</button></div>
                         </div>`;
                 });
             }
@@ -91,19 +98,43 @@
 
         window.toggleOverlay = (id, show) => { document.getElementById(id).style.display = show ? 'block' : 'none'; };
 
+        window.prepareEdit = (day, id, item) => {
+            currentEditId[day] = id;
+            document.getElementById(`time-day${day}`).value = item.time;
+            document.getElementById(`loc-day${day}`).value = item.loc;
+            document.getElementById(`trans-day${day}`).value = item.trans || "";
+            document.getElementById(`note-day${day}`).value = item.note || "";
+            document.getElementById(`url-day${day}`).value = item.url || "";
+            document.getElementById(`btn-save-day${day}`).innerText = "💾 儲存修改";
+            document.getElementById(`btn-save-day${day}`).classList.replace('bg-[#B4A582]', 'bg-orange-400');
+            document.getElementById(`loc-day${day}`).focus();
+        };
+
         window.addItem = (day) => {
             const time = document.getElementById(`time-day${day}`).value;
             const loc = document.getElementById(`loc-day${day}`).value;
             const trans = document.getElementById(`trans-day${day}`).value;
             const note = document.getElementById(`note-day${day}`).value;
+            const url = document.getElementById(`url-day${day}`).value;
             if(!time || !loc) return;
-            push(ref(db, `takamatsu_trip/itinerary/day${day}`), { time, loc, trans, note });
+
+            if (currentEditId[day]) {
+                set(ref(db, `takamatsu_trip/itinerary/day${day}/${currentEditId[day]}`), { time, loc, trans, note, url });
+                currentEditId[day] = null;
+                document.getElementById(`btn-save-day${day}`).innerText = "＋ 新增行程";
+                document.getElementById(`btn-save-day${day}`).classList.replace('bg-orange-400', 'bg-[#B4A582]');
+            } else {
+                push(ref(db, `takamatsu_trip/itinerary/day${day}`), { time, loc, trans, note, url });
+            }
+
+            document.getElementById(`time-day${day}`).value = "";
             document.getElementById(`loc-day${day}`).value = "";
             document.getElementById(`trans-day${day}`).value = "";
             document.getElementById(`note-day${day}`).value = "";
+            document.getElementById(`url-day${day}`).value = "";
         };
 
-        window.deleteItem = (day, id) => { remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`)); };
+        window.deleteItem = (day, id) => { if(confirm("確定刪除行程？")) remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`)); };
 
         window.addExpense = () => {
             const payer = document.getElementById('payerSelect').value;
@@ -121,105 +152,117 @@
         };
 
         window.deleteExpense = (id, payer, amount) => {
-            remove(ref(db, `takamatsu_trip/expense_logs/${id}`));
-            const path = `takamatsu_trip/expenses/${payer.toLowerCase()}`;
-            onValue(ref(db, path), (s) => set(ref(db, path), Math.max(0, (s.val()||0) - amount)), {onlyOnce: true});
+            if(confirm("刪除此紀錄？")) {
+                remove(ref(db, `takamatsu_trip/expense_logs/${id}`));
+                const path = `takamatsu_trip/expenses/${payer.toLowerCase()}`;
+                onValue(ref(db, path), (s) => set(ref(db, path), Math.max(0, (s.val()||0) - amount)), {onlyOnce: true});
+            }
         };
     </script>
 
     <style>
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #333; }
         .font-cursive { font-family: 'Dancing Script', cursive; }
-        .active-tab { color: #B4A582 !important; border-bottom: 2px solid #B4A582 !important; }
+        .active-tab { color: #B4A582 !important; border-bottom: 3px solid #B4A582 !important; }
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 100; display: none; overflow-y: auto; }
         input, select {
             background-color: #FDFBF7 !important; border: 1px solid #F0EBE0 !important;
-            padding: 0.7rem 1rem 0.7rem 1.5rem !important; border-radius: 0.8rem !important; outline: none; width: 100%; font-size: 0.9rem;
+            padding: 0.8rem 1rem 0.8rem 2rem !important; border-radius: 1rem !important; outline: none; width: 100%; font-size: 0.95rem;
         }
-        .weather-box { font-size: 0.7rem; color: #B4A582; border: 1px solid #B4A582/20; padding: 4px 8px; border-radius: 10px; }
+        .weather-card { display: flex; align-items: center; justify-content: flex-end; gap: 15px; color: #B4A582; margin-bottom: 20px; }
+        .weather-temp { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+        .weather-desc { font-size: 0.75rem; opacity: 0.8; text-align: right; }
     </style>
 </head>
 <body class="max-w-md mx-auto">
 
-    <header class="flex justify-between items-start p-6">
+    <header class="flex justify-between items-start p-7">
         <div>
-            <h1 class="text-2xl font-black text-[#B4A582] leading-none">東京⇋高松</h1>
-            <p class="font-cursive text-lg text-[#B4A582] mt-1">Tokyo to Takamatsu</p>
+            <h1 class="text-3xl font-black text-[#B4A582] tracking-tighter leading-none">東京⇋高松</h1>
+            <p class="font-cursive text-xl text-[#B4A582] mt-2">Tokyo to Takamatsu</p>
         </div>
-        <div class="flex gap-5 text-xl text-[#B4A582] pt-2">
-            <button onclick="toggleOverlay('map-overlay', true)"><i class="fa-solid fa-map-location-dot"></i></button>
-            <button onclick="toggleOverlay('expense-overlay', true)"><i class="fa-solid fa-wallet"></i></button>
+        <div class="flex gap-6 text-2xl text-[#B4A582] pt-2">
+            <button onclick="toggleOverlay('expense-overlay', true)"><i class="fa-solid fa-receipt"></i></button>
         </div>
     </header>
 
-    <div class="flex border-b border-gray-100 mb-6 px-6 overflow-x-auto">
-        <button onclick="switchTab(1)" class="tab-btn active-tab flex-none pr-6 py-3 text-sm font-bold text-gray-400 text-left">Day 1<br><span class="text-[10px] font-normal">19/12 Fri</span></button>
-        <button onclick="switchTab(2)" class="tab-btn flex-none pr-6 py-3 text-sm font-bold text-gray-400 text-left">Day 2<br><span class="text-[10px] font-normal">20/12 Sat</span></button>
-        <button onclick="switchTab(3)" class="tab-btn flex-none pr-6 py-3 text-sm font-bold text-gray-400 text-left">Day 3<br><span class="text-[10px] font-normal">21/12 Sun</span></button>
+    <div class="flex border-b border-gray-100 mb-8 w-full px-2">
+        <button onclick="switchTab(1)" class="tab-btn active-tab flex-1 py-4 text-center">
+            <span class="block font-bold text-sm">Day 1</span>
+            <span class="text-[10px] opacity-60">19/12 Fri</span>
+        </button>
+        <button onclick="switchTab(2)" class="tab-btn flex-1 py-4 text-center">
+            <span class="block font-bold text-sm text-gray-400">Day 2</span>
+            <span class="text-[10px] opacity-40">20/12 Sat</span>
+        </button>
+        <button onclick="switchTab(3)" class="tab-btn flex-1 py-4 text-center">
+            <span class="block font-bold text-sm text-gray-400">Day 3</span>
+            <span class="text-[10px] opacity-40">21/12 Sun</span>
+        </button>
     </div>
 
-    <main class="px-6 pb-40">
+    <main class="px-6 pb-48">
         <div id="day1-panel" class="day-content">
-            <div class="flex justify-end mb-4"><span class="weather-box">☀️ 9-13°C / 0% 降雨</span></div>
+            <div class="weather-card">
+                <div><p class="weather-temp">13°C</p><p class="weather-desc">9°C / 0% 降雨</p></div>
+                <i class="fa-solid fa-sun text-4xl"></i>
+            </div>
             <div id="timeline-day1"></div>
-            <div class="mt-8 space-y-2 bg-[#FDFBF7] p-5 rounded-3xl border border-[#B4A582]/10">
-                <div class="grid grid-cols-2 gap-2">
-                    <input type="time" id="time-day1">
-                    <input type="text" id="loc-day1" placeholder="地點">
-                </div>
-                <input type="text" id="trans-day1" placeholder="交通 (例: JR 快速 Marine Liner)">
-                <input type="text" id="note-day1" placeholder="內容/筆記">
-                <button onclick="addItem(1)" class="w-full bg-[#B4A582] text-white py-3 rounded-xl font-bold mt-2">＋ 新增行程</button>
+            <div class="mt-12 space-y-3 bg-[#FDFBF7] p-6 rounded-[2rem] border border-[#B4A582]/10 shadow-inner">
+                <div class="grid grid-cols-2 gap-3"><input type="time" id="time-day1"><input type="text" id="loc-day1" placeholder="行程地點"></div>
+                <input type="text" id="trans-day1" placeholder="交通 (例如: ✈️ NRT-TAK)">
+                <input type="text" id="note-day1" placeholder="備註/內容">
+                <input type="url" id="url-day1" placeholder="相關網址 (https://...)">
+                <button id="btn-save-day1" onclick="addItem(1)" class="w-full bg-[#B4A582] text-white py-4 rounded-2xl font-bold mt-2 shadow-lg active:scale-95 transition-all">＋ 新增行程</button>
             </div>
         </div>
 
         <div id="day2-panel" class="day-content hidden">
-            <div class="flex justify-end mb-4"><span class="weather-box">☁️ 8-12°C / 20% 降雨</span></div>
+            <div class="weather-card">
+                <div><p class="weather-temp">12°C</p><p class="weather-desc">8°C / 20% 降雨</p></div>
+                <i class="fa-solid fa-cloud-sun text-4xl"></i>
+            </div>
             <div id="timeline-day2"></div>
-            <div class="mt-8 space-y-2 bg-[#FDFBF7] p-5 rounded-3xl">
-                <div class="grid grid-cols-2 gap-2"><input type="time" id="time-day2"><input type="text" id="loc-day2" placeholder="地點"></div>
-                <input type="text" id="trans-day2" placeholder="交通方式"><input type="text" id="note-day2" placeholder="內容"><button onclick="addItem(2)" class="w-full bg-[#B4A582] text-white py-3 rounded-xl font-bold mt-2">＋ 新增行程</button>
+            <div class="mt-12 space-y-3 bg-[#FDFBF7] p-6 rounded-[2rem]">
+                <div class="grid grid-cols-2 gap-3"><input type="time" id="time-day2"><input type="text" id="loc-day2" placeholder="行程地點"></div>
+                <input type="text" id="trans-day2" placeholder="交通方式"><input type="text" id="note-day2" placeholder="備註內容"><input type="url" id="url-day2" placeholder="網址"><button id="btn-save-day2" onclick="addItem(2)" class="w-full bg-[#B4A582] text-white py-4 rounded-2xl font-bold mt-2">＋ 新增行程</button>
             </div>
         </div>
 
         <div id="day3-panel" class="day-content hidden">
-            <div class="flex justify-end mb-4"><span class="weather-box">☀️ 7-11°C / 10% 降雨</span></div>
+            <div class="weather-card">
+                <div><p class="weather-temp">11°C</p><p class="weather-desc">7°C / 10% 降雨</p></div>
+                <i class="fa-solid fa-sun text-4xl"></i>
+            </div>
             <div id="timeline-day3"></div>
-            <div class="mt-8 space-y-2 bg-[#FDFBF7] p-5 rounded-3xl">
-                <div class="grid grid-cols-2 gap-2"><input type="time" id="time-day3"><input type="text" id="loc-day3" placeholder="地點"></div>
-                <input type="text" id="trans-day3" placeholder="交通方式"><input type="text" id="note-day3" placeholder="內容"><button onclick="addItem(3)" class="w-full bg-[#B4A582] text-white py-3 rounded-xl font-bold mt-2">＋ 新增行程</button>
+            <div class="mt-12 space-y-3 bg-[#FDFBF7] p-6 rounded-[2rem]">
+                <div class="grid grid-cols-2 gap-3"><input type="time" id="time-day3"><input type="text" id="loc-day3" placeholder="行程地點"></div>
+                <input type="text" id="trans-day3" placeholder="交通方式"><input type="text" id="note-day3" placeholder="備註內容"><input type="url" id="url-day3" placeholder="網址"><button id="btn-save-day3" onclick="addItem(3)" class="w-full bg-[#B4A582] text-white py-4 rounded-2xl font-bold mt-2">＋ 新增行程</button>
             </div>
         </div>
     </main>
 
     <div id="expense-overlay" class="overlay p-8">
-        <div class="flex justify-between items-center mb-8">
-            <h2 class="text-2xl font-bold text-[#B4A582]">💰 費用分帳</h2>
-            <button onclick="toggleOverlay('expense-overlay', false)" class="text-3xl text-gray-300">&times;</button>
-        </div>
-        <div class="grid grid-cols-2 gap-3 mb-6">
-            <input type="text" id="nameA" placeholder="成員 A" onchange="updateNames()"><input type="text" id="nameB" placeholder="成員 B" onchange="updateNames()">
+        <div class="flex justify-between items-center mb-10">
+            <h2 class="text-3xl font-bold text-[#B4A582]">💰 費用清算</h2>
+            <button onclick="toggleOverlay('expense-overlay', false)" class="text-4xl text-gray-200">×</button>
         </div>
         <div class="grid grid-cols-2 gap-4 mb-8">
-            <div class="bg-gray-50 p-4 rounded-2xl text-center"><p class="text-[10px] text-gray-400 display-name-a">A</p><p id="totalA" class="text-xl font-bold text-[#B4A582]">¥0</p></div>
-            <div class="bg-gray-50 p-4 rounded-2xl text-center"><p class="text-[10px] text-gray-400 display-name-b">B</p><p id="totalB" class="text-xl font-bold text-[#B4A582]">¥0</p></div>
+            <input type="text" id="nameA" placeholder="成員 A" onchange="updateNames()"><input type="text" id="nameB" placeholder="成員 B" onchange="updateNames()">
         </div>
-        <div class="bg-[#FDFBF7] p-5 rounded-3xl border border-[#B4A582]/10 space-y-3">
+        <div class="grid grid-cols-2 gap-4 mb-10">
+            <div class="bg-gray-50 p-6 rounded-3xl text-center shadow-sm"><p class="text-[11px] text-gray-400 display-name-a uppercase mb-2">Payer A</p><p id="totalA" class="text-2xl font-bold text-[#B4A582]">¥0</p></div>
+            <div class="bg-gray-50 p-6 rounded-3xl text-center shadow-sm"><p class="text-[11px] text-gray-400 display-name-b uppercase mb-2">Payer B</p><p id="totalB" class="text-2xl font-bold text-[#B4A582]">¥0</p></div>
+        </div>
+        <div class="bg-[#FDFBF7] p-6 rounded-[2rem] border border-[#B4A582]/10 space-y-4">
             <input type="text" id="expItem" placeholder="支出項目 (如：一鶴骨付鳥)">
-            <div class="flex gap-2">
-                <select id="payerSelect" class="w-1/2"><option value="A">由 A 支付</option><option value="B">由 B 支付</option></select>
+            <div class="flex gap-3">
+                <select id="payerSelect" class="w-1/2 font-bold"><option value="A">由 A 支付</option><option value="B">由 B 支付</option></select>
                 <input type="number" id="expAmount" placeholder="金額" class="w-1/2">
             </div>
-            <button onclick="addExpense()" class="w-full bg-[#B4A582] text-white py-4 rounded-xl font-bold shadow-md">記錄支出</button>
+            <button onclick="addExpense()" class="w-full bg-[#B4A582] text-white py-4 rounded-2xl font-bold shadow-md">確認記錄</button>
         </div>
-        <div class="mt-10"><h3 class="text-xs font-bold text-gray-300 uppercase mb-4">支出歷史</h3><div id="expense-logs"></div></div>
-    </div>
-
-    <div id="map-overlay" class="overlay p-8">
-        <div class="flex justify-between items-center mb-8"><h2 class="text-2xl font-bold text-[#B4A582]">📍 行程地點</h2><button onclick="toggleOverlay('map-overlay', false)" class="text-3xl text-gray-300">&times;</button></div>
-        <div class="bg-gray-50 rounded-3xl p-8 text-center text-sm text-gray-400">
-            <p>點擊行程卡片旁的 📍 圖示<br>即可自動在 Google 地圖中定位。</p>
-        </div>
+        <div class="mt-12"><h3 class="text-xs font-bold text-gray-300 uppercase tracking-tighter mb-6">Expense History</h3><div id="expense-logs"></div></div>
     </div>
 
 </body>
