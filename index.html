@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高松旅遊即時同步手冊</title>
+    <title>東京⇋高松 旅遊同步手冊</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, set, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBA6MsDbbg_mqeLzliJfN1DyrFmUd_CrKo",
@@ -18,33 +17,22 @@
             projectId: "takamatsu12191221",
             storageBucket: "takamatsu12191221.firebasestorage.app",
             messagingSenderId: "701975778652",
-            appId: "1:701975778652:web:030547b85044b2cad75d99",
-            measurementId: "G-ZKWE4934GZ"
+            appId: "1:701975778652:web:030547b85044b2cad75d99"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const analytics = getAnalytics(app);
         const tripRef = ref(db, 'takamatsu_trip');
 
-        // 監聽雲端資料變化
         onValue(tripRef, (snapshot) => {
-            const data = snapshot.val() || { names: {a: "成員 A", b: "成員 B"}, itinerary: {}, expenses: {a: 0, b: 0}, expense_logs: {} };
+            const data = snapshot.val() || { itinerary: {}, expenses: {a: 0, b: 0}, expense_logs: {} };
             renderUI(data);
         });
 
         function renderUI(data) {
-            // 更新姓名
-            document.getElementById('nameA').value = data.names?.a || "成員 A";
-            document.getElementById('nameB').value = data.names?.b || "成員 B";
-            document.querySelectorAll('.display-name-a').forEach(el => el.innerText = data.names?.a || "成員 A");
-            document.querySelectorAll('.display-name-b').forEach(el => el.innerText = data.names?.b || "成員 B");
-            
-            // 更新總額
             document.getElementById('totalA').innerText = `¥${(data.expenses?.a || 0).toLocaleString()}`;
             document.getElementById('totalB').innerText = `¥${(data.expenses?.b || 0).toLocaleString()}`;
 
-            // 更新行程 Day 1-3
             for (let day = 1; day <= 3; day++) {
                 const listEl = document.getElementById(`list-day${day}`);
                 const dayData = data.itinerary ? data.itinerary[`day${day}`] : null;
@@ -56,13 +44,12 @@
                         listEl.innerHTML += `
                             <div class="flex items-center justify-between bg-white p-3 rounded-lg border-l-4 border-[#B4A582] mb-2 shadow-sm">
                                 <div><span class="font-bold mr-3 text-[#B4A582]">${item.time}</span><span class="text-gray-700">${item.loc}</span></div>
-                                <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-gray-300 hover:text-red-400 px-2">✕</button>
+                                <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-gray-300 px-2">✕</button>
                             </div>`;
                     });
                 }
             }
 
-            // 更新費用項目清單 (顯示最新 10 筆)
             const logEl = document.getElementById('expense-logs');
             logEl.innerHTML = "";
             if (data.expense_logs) {
@@ -70,26 +57,12 @@
                 logs.forEach(([id, log]) => {
                     logEl.innerHTML += `
                         <div class="flex justify-between items-center text-sm py-2 border-b border-[#B4A582]/10">
-                            <div>
-                                <p class="text-gray-700 font-medium">${log.item}</p>
-                                <p class="text-[10px] text-gray-400">${log.payer === 'A' ? (data.names?.a || 'A') : (data.names?.b || 'B')} 支付</p>
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <span class="font-bold text-[#B4A582]">¥${log.amount.toLocaleString()}</span>
-                                <button onclick="window.deleteExpense('${id}', '${log.payer}', ${log.amount})" class="text-gray-300 text-xs">✕</button>
-                            </div>
+                            <div><p class="text-gray-700 font-medium">${log.item}</p><p class="text-[10px] text-gray-400">${log.payer} 支付</p></div>
+                            <div class="flex items-center gap-3"><span class="font-bold text-[#B4A582]">¥${log.amount.toLocaleString()}</span><button onclick="window.deleteExpense('${id}', '${log.payer}', ${log.amount})" class="text-gray-300 text-xs">✕</button></div>
                         </div>`;
                 });
             }
         }
-
-        // 操作函數
-        window.updateNames = () => {
-            set(ref(db, 'takamatsu_trip/names'), {
-                a: document.getElementById('nameA').value || "成員 A",
-                b: document.getElementById('nameB').value || "成員 B"
-            });
-        };
 
         window.addItem = (day) => {
             const time = document.getElementById(`time-day${day}`).value;
@@ -99,34 +72,25 @@
             document.getElementById(`loc-day${day}`).value = "";
         };
 
-        window.deleteItem = (day, id) => {
-            remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`));
-        };
+        window.deleteItem = (day, id) => remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`));
 
         window.addExpense = () => {
             const payer = document.getElementById('payerSelect').value;
             const item = document.getElementById('expItem').value || "未命名支出";
             const amount = parseFloat(document.getElementById('expAmount').value);
             if(isNaN(amount)) return;
-            
-            // 增加總額
             const totalPath = `takamatsu_trip/expenses/${payer.toLowerCase()}`;
             onValue(ref(db, totalPath), (snapshot) => {
                 const current = snapshot.val() || 0;
                 set(ref(db, totalPath), current + amount);
             }, { onlyOnce: true });
-
-            // 記錄清單
-            push(ref(db, 'takamatsu_trip/expense_logs'), {
-                payer, item, amount, timestamp: Date.now()
-            });
-            
+            push(ref(db, 'takamatsu_trip/expense_logs'), { payer, item, amount, timestamp: Date.now() });
             document.getElementById('expItem').value = "";
             document.getElementById('expAmount').value = "";
         };
 
         window.deleteExpense = (logId, payer, amount) => {
-            if(!confirm("確定要刪除這筆支出嗎？總額也會扣除。")) return;
+            if(!confirm("刪除支出？")) return;
             remove(ref(db, `takamatsu_trip/expense_logs/${logId}`));
             const totalPath = `takamatsu_trip/expenses/${payer.toLowerCase()}`;
             onValue(ref(db, totalPath), (snapshot) => {
@@ -138,23 +102,9 @@
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
-        body { 
-            font-family: 'Noto Sans TC', sans-serif; 
-            background-color: #FFFFFF; color: #B4A582; 
-            min-height: 100vh;
-        }
-        .glass-card { 
-            background: rgba(180, 165, 130, 0.08); 
-            border: 1px solid rgba(180, 165, 130, 0.2);
-            border-radius: 1.5rem; padding: 1.5rem; margin-bottom: 1.5rem;
-        }
-        input, select {
-            background-color: #fcfbf9 !important; border: 1px solid rgba(180, 165, 130, 0.3) !important;
-            color: #6d644d !important; border-radius: 0.8rem !important; 
-            padding: 0.8rem 1rem 0.8rem 2rem !important;
-            outline: none; width: 100%; -webkit-appearance: none;
-        }
-        input::placeholder { color: #B4A582; opacity: 0.5; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #B4A582; min-height: 100vh; }
+        .glass-card { background: rgba(180, 165, 130, 0.08); border: 1px solid rgba(180, 165, 130, 0.2); border-radius: 1.5rem; padding: 1.5rem; margin-bottom: 1.5rem; }
+        input, select { background-color: #fcfbf9 !important; border: 1px solid rgba(180, 165, 130, 0.3) !important; color: #6d644d !important; border-radius: 0.8rem !important; padding: 0.8rem 1rem 0.8rem 2.5rem !important; outline: none; width: 100%; -webkit-appearance: none; }
         .btn-add { background-color: #B4A582; color: #FFFFFF; font-weight: bold; border-radius: 0.8rem; padding: 0.8rem 1rem; width: 100%; }
         .day-header { font-size: 1.4rem; font-weight: bold; border-bottom: 2px solid #B4A582; margin-bottom: 1rem; padding-bottom: 0.5rem; }
     </style>
@@ -162,17 +112,19 @@
 <body class="pb-10">
 
     <header class="p-8 text-center">
-        <h1 class="text-3xl font-bold tracking-wider">高松 19/12‧20/12‧21/12</h1>
-        <p class="mt-2 opacity-70 text-sm">✨ 即時雲端同步中</p>
+        <h1 class="text-4xl font-black tracking-tighter italic">東京⇋高松</h1>
     </header>
 
     <div class="max-w-md mx-auto px-5">
 
         <section class="glass-card">
-            <h2 class="font-bold mb-4">👤 成員設定</h2>
-            <div class="grid grid-cols-2 gap-4">
-                <input type="text" id="nameA" placeholder="成員 A 姓名" onchange="updateNames()">
-                <input type="text" id="nameB" placeholder="成員 B 姓名" onchange="updateNames()">
+            <h2 class="font-bold mb-3 flex items-center gap-2">🗺️ 跨區交通資訊</h2>
+            <div class="bg-white p-4 rounded-xl border border-[#B4A582]/30 mb-4 shadow-sm">
+                <p class="text-sm text-gray-600 mb-3">從東京前往高松，最推薦搭乘新幹線至「岡山站」轉乘 JR 快速 Marine Liner。</p>
+                <div class="flex flex-col gap-2">
+                    <a href="https://www.google.com/maps/dir/Tokyo,+Japan/Takamatsu,+Kagawa,+Japan/data=!4m14!4m13!1m5!1m1!19sChIJ51cu8IcbXWARiRtXIothAS4!2m2!1d139.650027!2d35.6764225!1m5!1m1!19sChIJ30eNVMXBUzURG_cenNQp9HI!2m2!1d134.0465405!2d34.342542!3e3" target="_blank" class="text-center py-2 bg-[#B4A582] text-white rounded-lg font-bold text-sm">查看 Google Maps 交通路線</a>
+                    <a href="https://www.google.com/maps/dir/?api=1&destination=Takamatsu+Station" target="_blank" class="text-center py-2 border border-[#B4A582] text-[#B4A582] rounded-lg font-bold text-sm">開啟導航至高松站</a>
+                </div>
             </div>
         </section>
 
@@ -181,8 +133,8 @@
             <div id="list-day1"></div>
             <div class="grid grid-cols-3 gap-2 mt-4">
                 <input type="time" id="time-day1" style="width: auto;">
-                <input type="text" id="loc-day1" placeholder="輸入地點" class="col-span-2">
-                <button onclick="addItem(1)" class="btn-add col-span-3">＋ 新增行程</button>
+                <input type="text" id="loc-day1" placeholder="行程地點" class="col-span-2">
+                <button onclick="addItem(1)" class="btn-add col-span-3">＋ 新增</button>
             </div>
         </section>
 
@@ -191,8 +143,8 @@
             <div id="list-day2"></div>
             <div class="grid grid-cols-3 gap-2 mt-4">
                 <input type="time" id="time-day2" style="width: auto;">
-                <input type="text" id="loc-day2" placeholder="輸入地點" class="col-span-2">
-                <button onclick="addItem(2)" class="btn-add col-span-3">＋ 新增行程</button>
+                <input type="text" id="loc-day2" placeholder="行程地點" class="col-span-2">
+                <button onclick="addItem(2)" class="btn-add col-span-3">＋ 新增</button>
             </div>
         </section>
 
@@ -201,8 +153,8 @@
             <div id="list-day3"></div>
             <div class="grid grid-cols-3 gap-2 mt-4">
                 <input type="time" id="time-day3" style="width: auto;">
-                <input type="text" id="loc-day3" placeholder="輸入地點" class="col-span-2">
-                <button onclick="addItem(3)" class="btn-add col-span-3">＋ 新增行程</button>
+                <input type="text" id="loc-day3" placeholder="行程地點" class="col-span-2">
+                <button onclick="addItem(3)" class="btn-add col-span-3">＋ 新增</button>
             </div>
         </section>
 
@@ -210,32 +162,31 @@
             <h2 class="font-bold mb-4">💰 旅遊分帳</h2>
             <div class="grid grid-cols-2 gap-4 mb-6">
                 <div class="text-center p-3 bg-white rounded-2xl border border-[#B4A582]/30 shadow-sm">
-                    <p class="text-xs opacity-70 mb-1">已支付：<span class="display-name-a">A</span></p>
+                    <p class="text-[10px] opacity-70 mb-1">A 已支付</p>
                     <p id="totalA" class="text-2xl font-bold">¥0</p>
                 </div>
                 <div class="text-center p-3 bg-white rounded-2xl border border-[#B4A582]/30 shadow-sm">
-                    <p class="text-xs opacity-70 mb-1">已支付：<span class="display-name-b">B</span></p>
+                    <p class="text-[10px] opacity-70 mb-1">B 已支付</p>
                     <p id="totalB" class="text-2xl font-bold">¥0</p>
                 </div>
             </div>
             
             <div class="space-y-3">
                 <select id="payerSelect">
-                    <option value="A">由 <span class="display-name-a">Mei</span> 付款</option>
-                    <option value="B">由 <span class="display-name-b">Wing</span> 付款</option>
+                    <option value="A">由 Mei 付款</option>
+                    <option value="B">由 Wing 付款</option>
                 </select>
-                <input type="text" id="expItem" placeholder="支出項目 (如：午餐)">
-                <input type="number" id="expAmount" placeholder="輸入金額">
-                <button onclick="addExpense()" class="btn-add mt-2">記錄這筆支出</button>
+                <input type="text" id="expItem" placeholder="支出項目">
+                <input type="number" id="expAmount" placeholder="金額">
+                <button onclick="addExpense()" class="btn-add mt-2">紀錄</button>
             </div>
 
             <div class="mt-6 pt-4 border-t border-[#B4A582]/20">
-                <p class="text-[11px] font-bold mb-3 opacity-60">最近支出紀錄：</p>
-                <div id="expense-logs" class="space-y-1"></div>
+                <p class="text-[10px] font-bold mb-2 opacity-50 uppercase tracking-widest">Recent Logs</p>
+                <div id="expense-logs"></div>
             </div>
         </section>
 
     </div>
 </body>
 </html>
-
