@@ -6,7 +6,7 @@
     <title>東京⇋高松 | Mei & Wing</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Roboto+Condensed:wght@700&family=Varela+Round&display=swap" rel="stylesheet">
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -53,7 +53,7 @@
                                 <div class="absolute left-[9px] top-2 w-4 h-4 rounded-full bg-[#B4A582] border-4 border-white shadow-sm z-10"></div>
                                 <div class="bg-[#fdfbf7] border border-[#B4A582]/15 rounded-[1.5rem] p-5 shadow-sm">
                                     <div class="flex justify-between items-center mb-2">
-                                        <span class="text-[#B4A582] font-black text-[11px] tracking-widest">${item.time}</span>
+                                        <span class="text-[#B4A582] font-black text-[11px] tracking-widest din-font">${item.time}</span>
                                         <div class="flex gap-4 text-gray-300">
                                             <button onclick='window.prepareEdit(${day}, "${item.id}", ${JSON.stringify(item)})' class="text-xs"><i class="fa-solid fa-pen"></i></button>
                                             <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-xs">✕</button>
@@ -90,32 +90,36 @@
                             <p class="text-[10px] text-gray-300 mt-0.5">${log.payer} 支付</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <span class="font-bold text-[#B4A582] text-base">¥${log.amount.toLocaleString()}</span>
+                            <span class="font-bold text-[#B4A582] text-lg din-font">¥${log.amount.toLocaleString()}</span>
                             <button onclick='window.prepareEditExpense("${id}", ${JSON.stringify(log)})' class="text-gray-200"><i class="fa-solid fa-pen text-[10px]"></i></button>
                         </div>
                     </div>`;
             });
 
             let matrixHtml = `
-                <table class="w-full text-center text-sm border-collapse">
+                <table class="w-full text-center border-collapse">
                     <thead>
-                        <tr class="text-gray-400 border-b border-gray-100"><th class="py-2 font-normal">類別</th><th class="py-2">Mei</th><th class="py-2">Wing</th></tr>
+                        <tr class="text-gray-400 border-b border-gray-100">
+                            <th class="py-2 text-left pl-2 font-normal text-xs">類別</th>
+                            <th class="py-2 text-xs">Mei</th>
+                            <th class="py-2 text-xs">Wing</th>
+                        </tr>
                     </thead>
                     <tbody class="text-gray-600">`;
             categories.forEach(cat => {
                 matrixHtml += `<tr class="border-b border-gray-50/50">
-                    <td class="py-4 font-bold text-left pl-2">${cat}</td>
-                    <td class="py-4">¥${matrix[cat].Mei.toLocaleString()}</td>
-                    <td class="py-4">¥${matrix[cat].Wing.toLocaleString()}</td>
+                    <td class="py-4 font-bold text-left pl-2 text-sm">${cat}</td>
+                    <td class="py-4 din-font text-sm">¥${matrix[cat].Mei.toLocaleString()}</td>
+                    <td class="py-4 din-font text-sm">¥${matrix[cat].Wing.toLocaleString()}</td>
                 </tr>`;
             });
             const totalMei = Object.values(matrix).reduce((a, b) => a + b.Mei, 0);
             const totalWing = Object.values(matrix).reduce((a, b) => a + b.Wing, 0);
             matrixHtml += `
             <tr class="text-[#B4A582] font-black border-t-2 border-dashed border-[#B4A582]/30">
-                <td class="py-6 text-left pl-2 text-base">總計</td>
-                <td class="py-6 text-base">¥${totalMei.toLocaleString()}</td>
-                <td class="py-6 text-base">¥${totalWing.toLocaleString()}</td>
+                <td class="py-6 text-left pl-2 text-base font-bold">總計</td>
+                <td class="py-6 text-lg din-font">¥${totalMei.toLocaleString()}</td>
+                <td class="py-6 text-lg din-font">¥${totalWing.toLocaleString()}</td>
             </tr></tbody></table>`;
             document.getElementById('expense-matrix').innerHTML = matrixHtml;
         }
@@ -172,7 +176,20 @@
 
     <style>
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #333; overflow-x: hidden; }
-        .font-cursive { font-family: 'Dancing Script', cursive; }
+        
+        /* 1. 源泉圓體風格 + 斜體 */
+        .yuan-font { 
+            font-family: 'Varela Round', 'Noto Sans TC', sans-serif; 
+            font-style: italic; 
+            font-weight: 900;
+        }
+
+        /* 2. DIN Next 風格字體 (數字專用) */
+        .din-font {
+            font-family: 'Roboto Condensed', sans-serif;
+            letter-spacing: -0.02em;
+        }
+
         .tab-btn .day-title { font-size: 1.1rem; display: block; line-height: 1.2; margin-bottom: 2px; }
         .tab-btn .day-date { font-size: 0.75rem; display: block; opacity: 0.6; }
         .tab-box { border: 1.5px solid #E8E2D5; padding: 10px 5px; transition: all 0.3s; width: 85%; margin: 0 auto; border-radius: 12px; }
@@ -189,8 +206,8 @@
     <header class="flex justify-between items-center p-8">
         <div class="flex items-center gap-3">
             <div>
-                <h1 class="text-2xl font-black text-[#B4A582] tracking-tighter leading-none">東京⇋高松</h1>
-                <p class="font-cursive text-lg text-[#B4A582] mt-1">Tokyo to Takamatsu</p>
+                <h1 class="text-3xl yuan-font text-[#B4A582] tracking-tighter leading-none">東京⇋高松</h1>
+                <p class="font-bold text-sm text-[#B4A582]/60 mt-1 uppercase tracking-widest">Tokyo to Takamatsu</p>
             </div>
             <img src="https://japaclip.com/files/udon-kitsune.png" alt="Udon" class="w-12 h-12 object-contain">
         </div>
@@ -199,13 +216,13 @@
 
     <div class="flex mb-8 w-full sticky top-0 bg-white z-20 pt-2 pb-4">
         <button onclick="switchTab(1)" class="tab-btn active-tab flex-1 text-center">
-            <div class="tab-box"><span class="day-title font-bold">Day 1</span><span class="day-date">19/12 Fri</span></div>
+            <div class="tab-box"><span class="day-title font-bold">Day 1</span><span class="day-date din-font">19/12 Fri</span></div>
         </button>
         <button onclick="switchTab(2)" class="tab-btn flex-1 text-center text-gray-400">
-            <div class="tab-box"><span class="day-title font-bold">Day 2</span><span class="day-date">20/12 Sat</span></div>
+            <div class="tab-box"><span class="day-title font-bold">Day 2</span><span class="day-date din-font">20/12 Sat</span></div>
         </button>
         <button onclick="switchTab(3)" class="tab-btn flex-1 text-center text-gray-400">
-            <div class="tab-box"><span class="day-title font-bold">Day 3</span><span class="day-date">21/12 Sun</span></div>
+            <div class="tab-box"><span class="day-title font-bold">Day 3</span><span class="day-date din-font">21/12 Sun</span></div>
         </button>
     </div>
 
@@ -223,7 +240,7 @@
                         <input type="text" id="day-note-${d.id}" onchange="saveDayNote(${d.id})" placeholder="✍️ 今日備忘..." class="text-sm text-[#B4A582] bg-transparent border-none outline-none font-bold placeholder:opacity-30 w-1/2">
                         <div class="flex items-center gap-3 text-[#B4A582]">
                             <i class="fa-solid ${d.icon} text-3xl"></i>
-                            <div class="text-right leading-tight">
+                            <div class="text-right leading-tight din-font">
                                 <p class="text-xl font-black">${d.weather}°C</p>
                                 <p class="text-[10px] font-bold opacity-70">${d.low}°C / ${d.rain}% 降雨</p>
                             </div>
@@ -232,7 +249,7 @@
                     <div id="timeline-day${d.id}" class="timeline-container"></div>
                     
                     <div class="mt-16 pt-10 border-t-2 border-dashed border-[#B4A582]/30 input-minimal">
-                        <div class="grid grid-cols-2 gap-6 mb-4"><input type="time" id="time-day${d.id}"><input type="text" id="loc-day${d.id}" placeholder="地點"></div>
+                        <div class="grid grid-cols-2 gap-6 mb-4"><input type="time" id="time-day${d.id}" class="din-font"><input type="text" id="loc-day${d.id}" placeholder="地點"></div>
                         <input type="text" id="trans-day${d.id}" placeholder="交通" class="mb-4">
                         <input type="text" id="note-day${d.id}" placeholder="備註" class="mb-4">
                         <input type="url" id="url-day${d.id}" placeholder="網址 (https://...)" class="mb-8">
@@ -245,7 +262,7 @@
 
     <div id="expense-overlay" class="overlay hidden p-8">
         <div class="flex justify-between items-center mb-10">
-            <h2 class="text-2xl font-black text-[#B4A582]">💰 費用清算</h2>
+            <h2 class="text-2xl font-black text-[#B4A582]">💰 費用</h2>
             <button onclick="toggleOverlay('expense-overlay', false)" class="text-3xl text-gray-200">✕</button>
         </div>
         <div id="expense-matrix" class="mb-10 p-6 bg-[#fdfbf7] rounded-[2rem] border border-[#B4A582]/10 shadow-inner"></div>
@@ -259,11 +276,11 @@
                 </select>
             </div>
             <input type="text" id="expItem" placeholder="支出項目" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none">
-            <input type="number" id="expAmount" placeholder="金額 (JPY)" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none font-bold">
+            <input type="number" id="expAmount" placeholder="金額 (JPY)" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none font-bold din-font">
             <button id="btn-save-expense" onclick="addExpense()" class="w-full bg-[#B4A582] text-white py-4 rounded-xl font-bold">確認記錄</button>
         </div>
         <div class="mt-8 border-t border-gray-100 pt-8">
-            <h3 class="text-[10px] font-bold text-gray-300 uppercase mb-6 tracking-widest text-center">History</h3>
+            <h3 class="text-[10px] font-bold text-gray-300 uppercase mb-6 tracking-widest text-center din-font">History</h3>
             <div id="expense-logs"></div>
         </div>
     </div>
