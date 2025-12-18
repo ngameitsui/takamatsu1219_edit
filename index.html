@@ -35,12 +35,10 @@
         });
 
         function renderUI(data) {
-            // 1. 每日備註
             for(let d=1; d<=3; d++) {
                 document.getElementById(`day-note-${d}`).value = data.day_notes?.[`day${d}`] || "";
             }
 
-            // 2. 行程渲染
             for (let day = 1; day <= 3; day++) {
                 const listEl = document.getElementById(`timeline-day${day}`);
                 const dayData = data.itinerary ? data.itinerary[`day${day}`] : null;
@@ -76,20 +74,14 @@
                 }
             }
 
-            // 3. 費用統計與矩陣
             const logs = data.expense_logs ? Object.entries(data.expense_logs) : [];
             const categories = ['交通', '飲食', '購物', '住宿', '其他'];
-            const matrix = categories.reduce((acc, cat) => {
-                acc[cat] = { Mei: 0, Wing: 0 };
-                return acc;
-            }, {});
+            const matrix = categories.reduce((acc, cat) => { acc[cat] = { Mei: 0, Wing: 0 }; return acc; }, {});
 
             const logEl = document.getElementById('expense-logs');
             logEl.innerHTML = "";
             logs.reverse().forEach(([id, log]) => {
-                if(matrix[log.cat]) {
-                    matrix[log.cat][log.payer] += log.amount;
-                }
+                if(matrix[log.cat]) matrix[log.cat][log.payer] += log.amount;
                 logEl.innerHTML += `
                     <div class="flex justify-between items-center py-4 border-b border-gray-50">
                         <div>
@@ -104,67 +96,48 @@
                     </div>`;
             });
 
-            // 渲染矩陣表格
             let matrixHtml = `
-                <table class="w-full text-center text-xs border-collapse">
+                <table class="w-full text-center text-sm border-collapse">
                     <thead>
                         <tr class="text-gray-400 border-b border-gray-100"><th class="py-2 font-normal">類別</th><th class="py-2">Mei</th><th class="py-2">Wing</th></tr>
                     </thead>
                     <tbody class="text-gray-600">`;
             categories.forEach(cat => {
                 matrixHtml += `<tr class="border-b border-gray-50/50">
-                    <td class="py-3 font-bold text-left pl-2">${cat}</td>
-                    <td class="py-3">¥${matrix[cat].Mei.toLocaleString()}</td>
-                    <td class="py-3">¥${matrix[cat].Wing.toLocaleString()}</td>
+                    <td class="py-4 font-bold text-left pl-2">${cat}</td>
+                    <td class="py-4">¥${matrix[cat].Mei.toLocaleString()}</td>
+                    <td class="py-4">¥${matrix[cat].Wing.toLocaleString()}</td>
                 </tr>`;
             });
             const totalMei = Object.values(matrix).reduce((a, b) => a + b.Mei, 0);
             const totalWing = Object.values(matrix).reduce((a, b) => a + b.Wing, 0);
-            matrixHtml += `<tr class="text-[#B4A582] font-black">
-                <td class="py-4 text-left pl-2">總計</td>
-                <td class="py-4">¥${totalMei.toLocaleString()}</td>
-                <td class="py-4">¥${totalWing.toLocaleString()}</td>
+            matrixHtml += `
+            <tr class="text-[#B4A582] font-black border-t-2 border-dashed border-[#B4A582]/20">
+                <td class="py-6 text-left pl-2 text-base">總計</td>
+                <td class="py-6 text-base">¥${totalMei.toLocaleString()}</td>
+                <td class="py-6 text-base">¥${totalWing.toLocaleString()}</td>
             </tr></tbody></table>`;
             document.getElementById('expense-matrix').innerHTML = matrixHtml;
         }
 
         window.toggleOverlay = (id, show) => {
             const el = document.getElementById(id);
-            if(show) {
-                el.classList.remove('hidden');
-                document.body.style.overflow = 'hidden';
-            } else {
-                el.classList.add('hidden');
-                document.body.style.overflow = 'auto';
-            }
+            if(show) { el.classList.remove('hidden'); document.body.style.overflow = 'hidden'; } 
+            else { el.classList.add('hidden'); document.body.style.overflow = 'auto'; }
         };
 
         window.addItem = (day) => {
-            const time = document.getElementById(`time-day${day}`).value;
-            const loc = document.getElementById(`loc-day${day}`).value;
-            const trans = document.getElementById(`trans-day${day}`).value;
-            const note = document.getElementById(`note-day${day}`).value;
-            const url = document.getElementById(`url-day${day}`).value;
-            if(!time || !loc) return;
-            if (currentEditId[day]) {
-                set(ref(db, `takamatsu_trip/itinerary/day${day}/${currentEditId[day]}`), { time, loc, trans, note, url });
-                currentEditId[day] = null;
-                document.getElementById(`btn-save-day${day}`).innerText = "＋ 記錄行程";
-            } else {
-                push(ref(db, `takamatsu_trip/itinerary/day${day}`), { time, loc, trans, note, url });
-            }
+            const vals = ['time','loc','trans','note','url'].reduce((acc, k) => { acc[k] = document.getElementById(`${k}-day${day}`).value; return acc; }, {});
+            if(!vals.time || !vals.loc) return;
+            if (currentEditId[day]) { set(ref(db, `takamatsu_trip/itinerary/day${day}/${currentEditId[day]}`), vals); currentEditId[day] = null; document.getElementById(`btn-save-day${day}`).innerText = "＋ 記錄行程"; } 
+            else { push(ref(db, `takamatsu_trip/itinerary/day${day}`), vals); }
             ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = "");
         };
 
         window.prepareEdit = (day, id, item) => {
             currentEditId[day] = id;
-            document.getElementById(`time-day${day}`).value = item.time;
-            document.getElementById(`loc-day${day}`).value = item.loc;
-            document.getElementById(`trans-day${day}`).value = item.trans || "";
-            document.getElementById(`note-day${day}`).value = item.note || "";
-            document.getElementById(`url-day${day}`).value = item.url || "";
+            ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = item[k] || "");
             document.getElementById(`btn-save-day${day}`).innerText = "💾 儲存修改";
-            window.scrollTo({top: document.getElementById(`btn-save-day${day}`).offsetTop, behavior: 'smooth'});
         };
 
         window.addExpense = () => {
@@ -173,25 +146,18 @@
             const item = document.getElementById('expItem').value || "支出";
             const amount = parseFloat(document.getElementById('expAmount').value);
             if(isNaN(amount)) return;
-
-            if(currentExpenseEditId) {
-                update(ref(db, `takamatsu_trip/expense_logs/${currentExpenseEditId}`), { payer, cat, item, amount });
-                currentExpenseEditId = null;
-                document.getElementById('btn-save-expense').innerText = "確認記錄";
-            } else {
-                push(ref(db, 'takamatsu_trip/expense_logs'), { payer, cat, item, amount });
-            }
+            if(currentExpenseEditId) { update(ref(db, `takamatsu_trip/expense_logs/${currentExpenseEditId}`), { payer, cat, item, amount }); currentExpenseEditId = null; document.getElementById('btn-save-expense').innerText = "確認記錄"; } 
+            else { push(ref(db, 'takamatsu_trip/expense_logs'), { payer, cat, item, amount }); }
             document.getElementById('expItem').value = ""; document.getElementById('expAmount').value = "";
         };
 
         window.prepareEditExpense = (id, log) => {
             currentExpenseEditId = id;
-            document.getElementById('payerSelect').value = log.payer;
-            document.getElementById('catSelect').value = log.cat;
-            document.getElementById('expItem').value = log.item;
-            document.getElementById('expAmount').value = log.amount;
+            ['payerSelect','catSelect','expItem','expAmount'].forEach(k => {
+                const key = k.replace('Select','').replace('exp','').toLowerCase();
+                document.getElementById(k).value = log[key === 'item' ? 'item' : (key === 'amount' ? 'amount' : (key === 'payer' ? 'payer' : 'cat'))];
+            });
             document.getElementById('btn-save-expense').innerText = "💾 儲存修改";
-            document.getElementById('expItem').focus();
         };
 
         window.deleteItem = (day, id) => { if(confirm("刪除行程？")) remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`)); };
@@ -207,77 +173,74 @@
     <style>
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #333; overflow-x: hidden; }
         .font-cursive { font-family: 'Dancing Script', cursive; }
-        .tab-btn .day-title { font-size: 1.8rem; display: block; line-height: 1; margin-bottom: 4px; }
-        .tab-btn .day-date { font-size: 0.9rem; display: block; opacity: 0.6; }
-        .active-tab { color: #B4A582 !important; border-bottom: 5px solid #B4A582 !important; }
+        .tab-btn .day-title { font-size: 1.1rem; display: block; line-height: 1.2; margin-bottom: 2px; }
+        .tab-btn .day-date { font-size: 0.75rem; display: block; opacity: 0.6; }
+        .tab-box { border: 1.5px solid #E8E2D5; padding: 10px 5px; rounded: 12px; transition: all 0.3s; width: 85%; margin: 0 auto; border-radius: 12px; }
+        .active-tab .tab-box { border-color: #B4A582; background-color: #fdfbf7; }
+        .active-tab { color: #B4A582 !important; }
         .timeline-container { position: relative; }
-        .timeline-container::before {
-            content: ''; position: absolute; left: 16px; top: 10px; bottom: 10px;
-            width: 2px; background: #B4A582; opacity: 0.15;
-        }
+        .timeline-container::before { content: ''; position: absolute; left: 16px; top: 10px; bottom: 10px; width: 2px; background: #B4A582; opacity: 0.15; }
         .overlay { position: fixed; inset: 0; background: white; z-index: 1000; overflow-y: auto; }
-        .input-minimal input { border: none !important; border-bottom: 1px solid #F0EBE0 !important; background: transparent !important; padding: 0.6rem 0 !important; font-size: 0.9rem !important; border-radius: 0 !important; width: 100%; }
-        .input-minimal input:focus { border-bottom-color: #B4A582 !important; outline: none; }
+        .input-minimal input { border: none !important; border-bottom: 1px solid #F0EBE0 !important; background: transparent !important; padding: 0.6rem 0 !important; font-size: 0.9rem !important; outline: none; width: 100%; }
     </style>
 </head>
 <body class="max-w-md mx-auto">
 
     <header class="flex justify-between items-center p-8">
         <div class="flex items-center gap-4">
-            <svg width="45" height="45" viewBox="0 0 100 100" class="fill-[#B4A582]">
+            <div>
+                <h1 class="text-2xl font-black text-[#B4A582] tracking-tighter leading-none">東京⇋高松</h1>
+                <p class="font-cursive text-lg text-[#B4A582] mt-1">Tokyo to Takamatsu</p>
+            </div>
+            <svg width="40" height="40" viewBox="0 0 100 100" class="fill-[#B4A582]">
                 <path d="M10,50 Q10,85 50,85 Q90,85 90,50 L10,50" fill="none" stroke="#B4A582" stroke-width="5" stroke-linecap="round"/>
                 <path d="M25,50 Q25,40 30,35 M40,50 Q40,30 45,25 M55,50 Q55,35 60,30 M70,50 Q70,40 75,35" stroke="#B4A582" stroke-width="4" stroke-linecap="round"/>
                 <circle cx="50" cy="65" r="8" fill="#E8DCC4" />
                 <path d="M45,65 Q50,60 55,65" stroke="#B4A582" stroke-width="2" fill="none"/>
             </svg>
-            <div>
-                <h1 class="text-3xl font-black text-[#B4A582] tracking-tighter leading-none">東京⇋高松</h1>
-                <p class="font-cursive text-xl text-[#B4A582] mt-1">Tokyo to Takamatsu</p>
-            </div>
         </div>
-        <button onclick="toggleOverlay('expense-overlay', true)" class="text-3xl text-[#B4A582]"><i class="fa-solid fa-circle-dollar-to-slot"></i></button>
+        <button onclick="toggleOverlay('expense-overlay', true)" class="text-2xl text-[#B4A582]"><i class="fa-solid fa-receipt"></i></button>
     </header>
 
-    <div class="flex border-b border-gray-100 mb-8 w-full sticky top-0 bg-white z-20">
-        <button onclick="switchTab(1)" class="tab-btn active-tab flex-1 py-5 text-center">
-            <span class="day-title font-black">Day 1</span><span class="day-date">19/12 Fri</span>
+    <div class="flex mb-8 w-full sticky top-0 bg-white z-20 pt-2 pb-4">
+        <button onclick="switchTab(1)" class="tab-btn active-tab flex-1 text-center">
+            <div class="tab-box"><span class="day-title font-bold">Day 1</span><span class="day-date">19/12 Fri</span></div>
         </button>
-        <button onclick="switchTab(2)" class="tab-btn flex-1 py-5 text-center">
-            <span class="day-title font-black text-gray-300">Day 2</span><span class="day-date text-gray-300">20/12 Sat</span>
+        <button onclick="switchTab(2)" class="tab-btn flex-1 text-center text-gray-400">
+            <div class="tab-box"><span class="day-title font-bold">Day 2</span><span class="day-date">20/12 Sat</span></div>
         </button>
-        <button onclick="switchTab(3)" class="tab-btn flex-1 py-5 text-center">
-            <span class="day-title font-black text-gray-300">Day 3</span><span class="day-date text-gray-300">21/12 Sun</span>
+        <button onclick="switchTab(3)" class="tab-btn flex-1 text-center text-gray-400">
+            <div class="tab-box"><span class="day-title font-bold">Day 3</span><span class="day-date">21/12 Sun</span></div>
         </button>
     </div>
 
     <main class="px-6 pb-40">
         <script>
             const dayInfos = [
-                { id: 1, weather: '13°C / 9°C', icon: 'fa-sun' },
-                { id: 2, weather: '12°C / 8°C', icon: 'fa-cloud-sun' },
-                { id: 3, weather: '11°C / 7°C', icon: 'fa-sun' }
+                { id: 1, weather: '13', low: '9', rain: '0', icon: 'fa-sun' },
+                { id: 2, weather: '12', low: '8', rain: '20', icon: 'fa-cloud-sun' },
+                { id: 3, weather: '11', low: '7', rain: '10', icon: 'fa-sun' }
             ];
             dayInfos.forEach(d => {
                 document.write(`
                 <div id="day${d.id}-panel" class="day-content ${d.id===1?'':'hidden'}">
-                    <div class="flex justify-between items-center mb-8 px-2">
-                        <input type="text" id="day-note-${d.id}" onchange="saveDayNote(${d.id})" placeholder="✍️ 今日備忘錄..." class="text-sm text-[#B4A582] bg-transparent border-none outline-none font-medium placeholder:opacity-30">
+                    <div class="flex justify-between items-center mb-8 px-2 pr-4">
+                        <input type="text" id="day-note-${d.id}" onchange="saveDayNote(${d.id})" placeholder="✍️ 今日備忘..." class="text-xs text-[#B4A582] bg-transparent border-none outline-none font-medium placeholder:opacity-30 w-1/2">
                         <div class="flex items-center gap-3 text-[#B4A582]">
-                            <div class="text-right leading-tight font-bold"><p class="text-lg">${d.weather.split(' ')[0]}</p></div>
-                            <i class="fa-solid ${d.icon} text-3xl"></i>
+                            <i class="fa-solid ${d.icon} text-2xl"></i>
+                            <div class="text-right leading-tight">
+                                <p class="text-lg font-black">${d.weather}°C</p>
+                                <p class="text-[9px] font-bold opacity-70">${d.low}°C / ${d.rain}% 降雨</p>
+                            </div>
                         </div>
                     </div>
                     <div id="timeline-day${d.id}" class="timeline-container"></div>
                     <div class="mt-16 pt-10 border-t border-dashed border-[#B4A582]/20 input-minimal">
-                        <p class="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-4">Add New Activity</p>
-                        <div class="grid grid-cols-2 gap-6 mb-4">
-                            <input type="time" id="time-day${d.id}">
-                            <input type="text" id="loc-day${d.id}" placeholder="地點">
-                        </div>
-                        <input type="text" id="trans-day${d.id}" placeholder="交通 (例如: ✈️ NRT-TAK)" class="mb-4">
-                        <input type="text" id="note-day${d.id}" placeholder="行程備註" class="mb-4">
+                        <div class="grid grid-cols-2 gap-6 mb-4"><input type="time" id="time-day${d.id}"><input type="text" id="loc-day${d.id}" placeholder="地點"></div>
+                        <input type="text" id="trans-day${d.id}" placeholder="交通" class="mb-4">
+                        <input type="text" id="note-day${d.id}" placeholder="備註" class="mb-4">
                         <input type="url" id="url-day${d.id}" placeholder="網址 (https://...)" class="mb-8">
-                        <button id="btn-save-day${d.id}" onclick="addItem(${d.id})" class="w-full bg-[#B4A582] text-white py-5 rounded-[1.5rem] font-bold text-sm shadow-lg active:scale-95 transition-all">＋ 記錄行程</button>
+                        <button id="btn-save-day${d.id}" onclick="addItem(${d.id})" class="w-full bg-[#B4A582] text-white py-4 rounded-2xl font-bold text-xs shadow-md">＋ 記錄行程</button>
                     </div>
                 </div>`);
             });
@@ -286,29 +249,25 @@
 
     <div id="expense-overlay" class="overlay hidden p-8">
         <div class="flex justify-between items-center mb-10">
-            <h2 class="text-3xl font-black text-[#B4A582]">💰 費用分帳</h2>
-            <button onclick="toggleOverlay('expense-overlay', false)" class="text-4xl text-gray-200">✕</button>
+            <h2 class="text-2xl font-black text-[#B4A582]">💰 費用清算</h2>
+            <button onclick="toggleOverlay('expense-overlay', false)" class="text-3xl text-gray-200">✕</button>
         </div>
-
         <div id="expense-matrix" class="mb-10 p-6 bg-[#fdfbf7] rounded-[2rem] border border-[#B4A582]/10 shadow-inner"></div>
-
-        <div class="space-y-5 mb-12">
-            <div class="grid grid-cols-2 gap-4">
-                <select id="payerSelect" class="bg-gray-50 p-4 rounded-2xl text-sm border-none outline-none font-bold text-[#B4A582]">
-                    <option value="Mei">Mei 支付</option><option value="Wing">Wing 支付</option>
+        <div class="space-y-4 mb-12">
+            <div class="grid grid-cols-2 gap-3">
+                <select id="payerSelect" class="bg-gray-50 p-4 rounded-xl text-sm outline-none font-bold text-[#B4A582]">
+                    <option value="Mei">Mei</option><option value="Wing">Wing</option>
                 </select>
-                <select id="catSelect" class="bg-gray-50 p-4 rounded-2xl text-sm border-none outline-none">
-                    <option value="交通">🚗 交通</option><option value="飲食">🍜 飲食</option>
-                    <option value="購物">🛍️ 購物</option><option value="住宿">🏨 住宿</option><option value="其他">✨ 其他</option>
+                <select id="catSelect" class="bg-gray-50 p-4 rounded-xl text-sm outline-none">
+                    <option value="交通">🚗 交通</option><option value="飲食">🍜 飲食</option><option value="購物">🛍️ 購物</option><option value="住宿">🏨 住宿</option><option value="其他">✨ 其他</option>
                 </select>
             </div>
-            <input type="text" id="expItem" placeholder="支出項目 (如：一鶴骨付鳥)" class="w-full bg-gray-50 p-4 rounded-2xl text-sm outline-none border-none">
-            <input type="number" id="expAmount" placeholder="金額 (JPY)" class="w-full bg-gray-50 p-4 rounded-2xl text-sm outline-none border-none font-bold">
-            <button id="btn-save-expense" onclick="addExpense()" class="w-full bg-[#B4A582] text-white py-5 rounded-[1.5rem] font-bold shadow-lg active:scale-95 transition-all">確認記錄</button>
+            <input type="text" id="expItem" placeholder="支出項目" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none">
+            <input type="number" id="expAmount" placeholder="金額 (JPY)" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none font-bold">
+            <button id="btn-save-expense" onclick="addExpense()" class="w-full bg-[#B4A582] text-white py-4 rounded-xl font-bold">確認記錄</button>
         </div>
-
         <div class="mt-8 border-t border-gray-100 pt-8">
-            <h3 class="text-xs font-bold text-gray-300 uppercase mb-6 tracking-widest">History Logs</h3>
+            <h3 class="text-[10px] font-bold text-gray-300 uppercase mb-6 tracking-widest text-center">History</h3>
             <div id="expense-logs"></div>
         </div>
     </div>
