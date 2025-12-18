@@ -10,7 +10,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBA6MsDbbg_mqeLzliJfN1DyrFmUd_CrKo",
@@ -26,8 +26,8 @@
         const db = getDatabase(app);
         const tripRef = ref(db, 'takamatsu_trip');
 
-        // 交通資料庫參照
-        const transRef = ref(db, 'takamatsu_trip/transport');
+        let currentEditId = { 1: null, 2: null, 3: null };
+        let currentExpenseEditId = null;
 
         onValue(tripRef, (snapshot) => {
             const data = snapshot.val() || {};
@@ -35,22 +35,118 @@
             renderTransport(data.transport || {});
         });
 
-        // 渲染交通分頁內容
+        function renderUI(data) {
+            // 每日備忘
+            for(let d=1; d<=3; d++) {
+                const noteEl = document.getElementById(`day-note-${d}`);
+                if (document.activeElement !== noteEl) {
+                    noteEl.value = data.day_notes?.[`day${d}`] || "";
+                }
+            }
+
+            // 行程渲染
+            for (let day = 1; day <= 3; day++) {
+                const listEl = document.getElementById(`timeline-day${day}`);
+                const dayData = data.itinerary ? data.itinerary[`day${day}`] : null;
+                listEl.innerHTML = "";
+                if (dayData) {
+                    const items = Object.entries(dayData).map(([id, val]) => ({ id, ...val }));
+                    items.sort((a, b) => a.time.localeCompare(b.time));
+                    items.forEach(item => {
+                        const hasUrl = item.url && item.url.startsWith('http');
+                        listEl.innerHTML += `
+                            <div class="relative pl-12 mb-8">
+                                <div class="absolute left-[9px] top-2 w-4 h-4 rounded-full bg-[#B4A582] border-4 border-white shadow-sm z-10"></div>
+                                <div class="bg-[#fdfbf7] border border-[#B4A582]/15 rounded-[1.5rem] p-5 shadow-sm">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-[#B4A582] font-black text-xs tracking-widest din-font">${item.time}</span>
+                                        <div class="flex gap-4 text-gray-300">
+                                            <button onclick='window.prepareEdit(${day}, "${item.id}", ${JSON.stringify(item)})' class="text-xs"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="window.deleteItem(${day}, '${item.id}')" class="text-xs">✕</button>
+                                        </div>
+                                    </div>
+                                    <h3 class="font-bold text-gray-800 text-lg mb-1">${item.loc}</h3>
+                                    <div class="space-y-1 text-[13px] text-gray-500 mb-4">
+                                        <p class="flex items-center text-[#B4A582] font-medium"><i class="fa-solid fa-train-subway w-5 text-sm"></i> ${item.trans || '-'}</p>
+                                        <p class="flex items-start opacity-80"><i class="fa-solid fa-quote-left w-5 mt-1 opacity-30 text-xs"></i> <span class="flex-1 text-xs">${item.note || '-'}</span></p>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.loc)}" target="_blank" class="flex-1 text-center py-2 bg-white border border-[#B4A582]/30 rounded-xl text-xs text-[#B4A582] font-bold shadow-sm">📍 導航</a>
+                                        ${hasUrl ? `<a href="${item.url}" target="_blank" class="flex-1 text-center py-2 bg-[#B4A582] rounded-xl text-xs text-white font-bold shadow-md">🔗 連結</a>` : ''}
+                                    </div>
+                                </div>
+                            </div>`;
+                    });
+                }
+            }
+
+            // 費用清算
+            const logs = data.expense_logs ? Object.entries(data.expense_logs) : [];
+            const categories = ['交通', '飲食', '購物', '住宿', '其他'];
+            const matrix = categories.reduce((acc, cat) => { acc[cat] = { Mei: 0, Wing: 0 }; return acc; }, {});
+
+            const logEl = document.getElementById('expense-logs');
+            logEl.innerHTML = "";
+            logs.reverse().forEach(([id, log]) => {
+                if(matrix[log.cat]) matrix[log.cat][log.payer] += log.amount;
+                logEl.innerHTML += `
+                    <div class="flex justify-between items-center py-4 border-b border-gray-50">
+                        <div class="text-[13px]">
+                            <span class="text-xs bg-[#B4A582]/10 text-[#B4A582] px-2 py-0.5 rounded-md mr-2 font-bold">${log.cat}</span>
+                            <span class="text-gray-700 font-medium">${log.item}</span>
+                            <p class="text-xs text-gray-300 mt-0.5">${log.payer} 支付</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="font-bold text-[#B4A582] text-base din-font">¥${log.amount.toLocaleString()}</span>
+                            <button onclick='window.prepareEditExpense("${id}", ${JSON.stringify(log)})' class="text-gray-200"><i class="fa-solid fa-pen text-xs"></i></button>
+                        </div>
+                    </div>`;
+            });
+
+            // 費用矩陣表格
+            let matrixHtml = `
+                <table class="w-full text-center border-collapse">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-100">
+                            <th class="py-2 text-left pl-2 font-normal text-xs">類別</th>
+                            <th class="py-2 text-xs">Mei</th>
+                            <th class="py-2 text-xs">Wing</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-600">`;
+            categories.forEach(cat => {
+                matrixHtml += `<tr class="border-b border-gray-50/50">
+                    <td class="py-4 font-bold text-left pl-2 text-sm">${cat}</td>
+                    <td class="py-4 din-font text-sm">¥${matrix[cat].Mei.toLocaleString()}</td>
+                    <td class="py-4 din-font text-sm">¥${matrix[cat].Wing.toLocaleString()}</td>
+                </tr>`;
+            });
+            const totalMei = Object.values(matrix).reduce((a, b) => a + b.Mei, 0);
+            const totalWing = Object.values(matrix).reduce((a, b) => a + b.Wing, 0);
+            matrixHtml += `
+            <tr class="text-[#B4A582] font-black border-t-2 border-dashed border-[#B4A582]/30">
+                <td class="py-6 text-left pl-2 text-base font-bold">總計</td>
+                <td class="py-6 text-lg din-font">¥${totalMei.toLocaleString()}</td>
+                <td class="py-6 text-lg din-font">¥${totalWing.toLocaleString()}</td>
+            </tr></tbody></table>`;
+            document.getElementById('expense-matrix').innerHTML = matrixHtml;
+        }
+
+        // 渲染交通工具
         function renderTransport(transData) {
             const types = ['jr', 'kotoden', 'bus', 'ferry'];
             types.forEach(type => {
                 const noteInput = document.getElementById(`trans-note-${type}`);
                 const urlInput = document.getElementById(`trans-url-${type}`);
                 const frame = document.getElementById(`trans-frame-${type}`);
-                
                 if (transData[type]) {
                     if (document.activeElement !== noteInput) noteInput.value = transData[type].note || "";
                     if (document.activeElement !== urlInput) urlInput.value = transData[type].url || "";
-                    
                     if (transData[type].url) {
                         frame.src = transData[type].url;
                         frame.classList.remove('hidden');
                     } else {
+                        frame.src = "";
                         frame.classList.add('hidden');
                     }
                 }
@@ -69,22 +165,62 @@
             else { el.classList.add('hidden'); document.body.style.overflow = 'auto'; }
         };
 
-        // ... (其餘原本的行程與費用 function 保留) ...
-        // (此處為了代碼長度簡化，實際運行請包含上一版的所有邏輯)
-        // [註：以下 renderUI 已包含原本的邏輯並更新 12px]
+        window.addItem = (day) => {
+            const vals = ['time','loc','trans','note','url'].reduce((acc, k) => { acc[k] = document.getElementById(`${k}-day${day}`).value; return acc; }, {});
+            if(!vals.time || !vals.loc) return;
+            if (currentEditId[day]) { set(ref(db, `takamatsu_trip/itinerary/day${day}/${currentEditId[day]}`), vals); currentEditId[day] = null; document.getElementById(`btn-save-day${day}`).innerText = "＋ 記錄行程"; } 
+            else { push(ref(db, `takamatsu_trip/itinerary/day${day}`), vals); }
+            ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = "");
+        };
+
+        window.prepareEdit = (day, id, item) => {
+            currentEditId[day] = id;
+            ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = item[k] || "");
+            document.getElementById(`btn-save-day${day}`).innerText = "💾 儲存修改";
+        };
+
+        window.addExpense = () => {
+            const payer = document.getElementById('payerSelect').value;
+            const cat = document.getElementById('catSelect').value;
+            const item = document.getElementById('expItem').value || "支出";
+            const amount = parseFloat(document.getElementById('expAmount').value);
+            if(isNaN(amount)) return;
+            if(currentExpenseEditId) { update(ref(db, `takamatsu_trip/expense_logs/${currentExpenseEditId}`), { payer, cat, item, amount }); currentExpenseEditId = null; document.getElementById('btn-save-expense').innerText = "確認記錄"; } 
+            else { push(ref(db, 'takamatsu_trip/expense_logs'), { payer, cat, item, amount }); }
+            document.getElementById('expItem').value = ""; document.getElementById('expAmount').value = "";
+        };
+
+        window.prepareEditExpense = (id, log) => {
+            currentExpenseEditId = id;
+            document.getElementById('payerSelect').value = log.payer;
+            document.getElementById('catSelect').value = log.cat;
+            document.getElementById('expItem').value = log.item;
+            document.getElementById('expAmount').value = log.amount;
+            document.getElementById('btn-save-expense').innerText = "💾 儲存修改";
+        };
+
+        window.deleteItem = (day, id) => { if(confirm("刪除行程？")) remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`)); };
+        window.saveDayNote = (day) => { update(ref(db, `takamatsu_trip/day_notes`), { [`day${day}`]: document.getElementById(`day-note-${day}`).value }); };
+        window.switchTab = (day) => {
+            document.querySelectorAll('.day-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`day${day}-panel`).classList.remove('hidden');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active-tab'));
+            event.currentTarget.classList.add('active-tab');
+        };
     </script>
 
     <style>
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #333; overflow-x: hidden; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #333; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
         .yuan-font { font-family: 'Varela Round', 'Noto Sans TC', sans-serif; font-style: italic; font-weight: 900; }
-        .din-font { font-family: 'Roboto Condensed', sans-serif; letter-spacing: -0.02em; }
-        .overlay { position: fixed; inset: 0; background: white; z-index: 1000; overflow-y: auto; }
+        .din-font { font-family: 'Roboto Condensed', sans-serif; letter-spacing: -0.01em; }
         .tab-box { border: 1.5px solid #E8E2D5; padding: 10px 5px; transition: all 0.3s; width: 85%; margin: 0 auto; border-radius: 12px; }
         .active-tab .tab-box { border-color: #B4A582; background-color: #fdfbf7; }
         .active-tab { color: #B4A582 !important; }
+        .timeline-container { position: relative; }
+        .timeline-container::before { content: ''; position: absolute; left: 16px; top: 10px; bottom: 10px; width: 2px; background: #B4A582; opacity: 0.15; }
+        .overlay { position: fixed; inset: 0; background: white; z-index: 1000; overflow-y: auto; }
         .input-minimal input { border: none !important; border-bottom: 1px solid #F0EBE0 !important; background: transparent !important; padding: 0.6rem 0 !important; font-size: 12px !important; outline: none; width: 100%; }
-        .trans-btn { border: 1px solid #B4A582; color: #B4A582; padding: 10px; border-radius: 12px; font-weight: bold; font-size: 14px; text-align: center; }
-        .trans-btn.active { background: #B4A582; color: white; }
+        iframe { width: 100%; height: 350px; border-radius: 12px; border: 1px solid #eee; margin-top: 10px; }
     </style>
 </head>
 <body class="max-w-md mx-auto">
@@ -92,7 +228,7 @@
     <header class="flex justify-between items-center p-8">
         <div class="flex items-center gap-3">
             <div>
-                <h1 class="text-3xl yuan-font text-[#B4A582] tracking-tighter leading-none">東京⇋高松</h1>
+                <h1 class="text-3xl yuan-font text-[#B4A582] tracking-tighter leading-none italic">東京⇋高松</h1>
                 <p class="font-bold text-xs text-[#B4A582]/60 mt-1 uppercase tracking-widest din-font">Tokyo to Takamatsu</p>
             </div>
             <img src="https://japaclip.com/files/udon-kitsune.png" alt="Udon" class="w-12 h-12 object-contain">
@@ -103,21 +239,90 @@
         </div>
     </header>
 
+    <div class="flex mb-8 w-full sticky top-0 bg-white z-20 pt-2 pb-4">
+        <button onclick="switchTab(1)" class="tab-btn active-tab flex-1 text-center">
+            <div class="tab-box"><span class="day-title font-bold text-sm">Day 1</span><span class="day-date text-xs din-font">19/12 Fri</span></div>
+        </button>
+        <button onclick="switchTab(2)" class="tab-btn flex-1 text-center text-gray-400">
+            <div class="tab-box"><span class="day-title font-bold text-sm">Day 2</span><span class="day-date text-xs din-font">20/12 Sat</span></div>
+        </button>
+        <button onclick="switchTab(3)" class="tab-btn flex-1 text-center text-gray-400">
+            <div class="tab-box"><span class="day-title font-bold text-sm">Day 3</span><span class="day-date text-xs din-font">21/12 Sun</span></div>
+        </button>
+    </div>
+
+    <main class="px-6 pb-40">
+        <script>
+            const dayInfos = [
+                { id: 1, weather: '13', low: '9', rain: '0', icon: 'fa-sun' },
+                { id: 2, weather: '12', low: '8', rain: '20', icon: 'fa-cloud-sun' },
+                { id: 3, weather: '11', low: '7', rain: '10', icon: 'fa-sun' }
+            ];
+            dayInfos.forEach(d => {
+                document.write(`
+                <div id="day${d.id}-panel" class="day-content ${d.id===1?'':'hidden'}">
+                    <div class="flex justify-between items-center mb-8 px-2 pr-4">
+                        <input type="text" id="day-note-${d.id}" onchange="saveDayNote(${d.id})" placeholder="✍️ 今日備忘..." class="text-sm text-[#B4A582] bg-transparent border-none outline-none font-bold placeholder:opacity-30 w-1/2">
+                        <div class="flex items-center gap-3 text-[#B4A582]">
+                            <i class="fa-solid ${d.icon} text-3xl"></i>
+                            <div class="text-right leading-tight din-font">
+                                <p class="text-xl font-black">${d.weather}°C</p>
+                                <p class="text-xs font-bold opacity-70">${d.low}°C / ${d.rain}% 降雨</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="timeline-day${d.id}" class="timeline-container"></div>
+                    <div class="mt-16 pt-10 border-t-2 border-dashed border-[#B4A582]/30 input-minimal">
+                        <div class="grid grid-cols-2 gap-6 mb-4"><input type="time" id="time-day${d.id}" class="din-font"><input type="text" id="loc-day${d.id}" placeholder="地點"></div>
+                        <input type="text" id="trans-day${d.id}" placeholder="交通" class="mb-4">
+                        <input type="text" id="note-day${d.id}" placeholder="備註" class="mb-4">
+                        <input type="url" id="url-day${d.id}" placeholder="網址 (https://...)" class="mb-8">
+                        <button id="btn-save-day${d.id}" onclick="addItem(${d.id})" class="w-full bg-[#B4A582] text-white py-4 rounded-2xl font-bold text-xs shadow-md">＋ 記錄行程</button>
+                    </div>
+                </div>`);
+            });
+        </script>
+    </main>
+
+    <div id="expense-overlay" class="overlay hidden p-8">
+        <div class="flex justify-between items-center mb-10">
+            <h2 class="text-2xl font-black text-[#B4A582]">💰 費用清算</h2>
+            <button onclick="toggleOverlay('expense-overlay', false)" class="text-3xl text-gray-200">✕</button>
+        </div>
+        <div id="expense-matrix" class="mb-10 p-6 bg-[#fdfbf7] rounded-[2rem] border border-[#B4A582]/10 shadow-inner"></div>
+        <div class="space-y-4 mb-12">
+            <div class="grid grid-cols-2 gap-3">
+                <select id="payerSelect" class="bg-gray-50 p-4 rounded-xl text-sm outline-none font-bold text-[#B4A582]">
+                    <option value="Mei">Mei</option><option value="Wing">Wing</option>
+                </select>
+                <select id="catSelect" class="bg-gray-50 p-4 rounded-xl text-sm outline-none">
+                    <option value="交通">🚗 交通</option><option value="飲食">🍜 飲食</option><option value="購物">🛍️ 購物</option><option value="住宿">🏨 住宿</option><option value="其他">✨ 其他</option>
+                </select>
+            </div>
+            <input type="text" id="expItem" placeholder="支出項目" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none">
+            <input type="number" id="expAmount" placeholder="金額 (JPY)" class="w-full bg-gray-50 p-4 rounded-xl text-sm outline-none font-bold din-font">
+            <button id="btn-save-expense" onclick="addExpense()" class="w-full bg-[#B4A582] text-white py-4 rounded-xl font-bold">確認記錄</button>
+        </div>
+        <div class="mt-8 border-t border-gray-100 pt-8">
+            <h3 class="text-xs font-bold text-gray-300 uppercase mb-6 tracking-widest text-center din-font">History Logs</h3>
+            <div id="expense-logs"></div>
+        </div>
+    </div>
+
     <div id="trans-overlay" class="overlay hidden p-6">
         <div class="flex justify-between items-center mb-8">
             <h2 class="text-2xl font-black text-[#B4A582]">📍 交通路線</h2>
             <button onclick="toggleOverlay('trans-overlay', false)" class="text-3xl text-gray-200">✕</button>
         </div>
-
-        <div class="space-y-10">
+        <div class="space-y-8">
             <script>
-                const transTypes = [
+                const transItems = [
                     { id: 'jr', name: 'JR線', icon: 'fa-train' },
                     { id: 'kotoden', name: 'とことでん', icon: 'fa-subway' },
                     { id: 'bus', name: '機場巴士', icon: 'fa-bus' },
                     { id: 'ferry', name: '船隻', icon: 'fa-ship' }
                 ];
-                transTypes.forEach(t => {
+                transItems.forEach(t => {
                     document.write(`
                         <div class="bg-[#fdfbf7] p-6 rounded-[2rem] border border-[#B4A582]/15">
                             <div class="flex items-center gap-3 mb-4 text-[#B4A582]">
@@ -125,12 +330,10 @@
                                 <h3 class="font-black text-lg">${t.name}</h3>
                             </div>
                             <div class="space-y-3 input-minimal">
-                                <input type="text" id="trans-note-${t.id}" placeholder="輸入備註 (如：乘車處、時刻表摘要)" onchange="saveTrans('${t.id}')">
-                                <input type="url" id="trans-url-${t.id}" placeholder="路線圖網址 (https://...)" onchange="saveTrans('${t.id}')">
+                                <input type="text" id="trans-note-${t.id}" placeholder="乘車位置或時刻摘要" onchange="saveTrans('${t.id}')">
+                                <input type="url" id="trans-url-${t.id}" placeholder="路線圖/地圖網址" onchange="saveTrans('${t.id}')">
                             </div>
-                            <div class="mt-4 rounded-xl overflow-hidden border border-gray-100 bg-white">
-                                <iframe id="trans-frame-${t.id}" src="" class="w-full h-48 hidden border-none"></iframe>
-                            </div>
+                            <iframe id="trans-frame-${t.id}" class="hidden"></iframe>
                         </div>
                     `);
                 });
@@ -139,5 +342,5 @@
         <div class="h-20"></div>
     </div>
 
-    </body>
+</body>
 </html>
