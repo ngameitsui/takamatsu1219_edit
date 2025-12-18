@@ -13,21 +13,19 @@
         .yuan-font { font-family: 'Varela Round', 'Noto Sans TC', sans-serif; font-style: italic; font-weight: 900; }
         .din-font { font-family: 'Roboto Condensed', sans-serif; letter-spacing: -0.02em; }
         
-        /* 修改：日期分行顯示 */
         .tab-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .tab-box { border: 1.5px solid #E8E2D5; padding: 8px 5px; transition: all 0.3s; width: 90%; margin: 0 auto; border-radius: 12px; }
         .active-tab .tab-box { border-color: #B4A582; background-color: #fdfbf7; }
         .active-tab { color: #B4A582 !important; }
         
-        /* 修正：分頁層完全覆蓋且可滾動到底部 */
         .overlay { 
             position: fixed; 
             inset: 0; 
-            background: #FFFFFF; /* 強制純白背景，不透明 */
+            background: #FFFFFF; 
             z-index: 2000; 
             overflow-y: auto; 
             -webkit-overflow-scrolling: touch;
-            padding-bottom: 120px; /* 確保能拉到最底 */
+            padding-bottom: 120px; 
         }
         
         .timeline-container { position: relative; }
@@ -38,7 +36,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, push, remove, update, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBA6MsDbbg_mqeLzliJfN1DyrFmUd_CrKo",
@@ -66,7 +64,8 @@
 
         function renderUI(data) {
             for(let d=1; d<=3; d++) {
-                document.getElementById(`day-note-${d}`).value = data.day_notes?.[`day${d}`] || "";
+                const el = document.getElementById(`day-note-${d}`);
+                if(el && document.activeElement !== el) el.value = data.day_notes?.[`day${d}`] || "";
             }
             for (let day = 1; day <= 3; day++) {
                 const listEl = document.getElementById(`timeline-day${day}`);
@@ -102,7 +101,6 @@
                     });
                 }
             }
-            // 費用邏輯保留
             const logs = data.expense_logs ? Object.entries(data.expense_logs) : [];
             const logEl = document.getElementById('expense-logs');
             logEl.innerHTML = "";
@@ -123,15 +121,20 @@
         function renderTransport(transData) {
             const list = document.getElementById('trans-list');
             list.innerHTML = "";
-            Object.entries(transData).forEach(([id, t]) => {
+            const sortedItems = Object.entries(transData).map(([id, t]) => ({ id, ...t }));
+            sortedItems.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+            sortedItems.forEach((t, index) => {
                 const hasUrl = t.url && t.url.startsWith('http');
                 list.innerHTML += `
                 <div class="bg-[#fdfbf7] p-5 rounded-[2rem] border border-[#B4A582]/15 mb-6">
                     <div class="flex justify-between items-center mb-3">
                         <div class="flex items-center gap-3 text-[#B4A582]"><i class="fa-solid fa-route text-xl"></i><h3 class="font-black text-lg">${t.name}</h3></div>
-                        <div class="flex gap-4 text-gray-300">
-                             <button onclick='window.prepareEditTrans("${id}", ${JSON.stringify(t)})' class="text-xs"><i class="fa-solid fa-pen"></i></button>
-                             <button onclick="window.deleteTrans('${id}')" class="text-xs">✕</button>
+                        <div class="flex gap-3 text-gray-300">
+                             <button onclick="window.moveTrans('${t.id}', -1)" class="text-xs ${index===0?'opacity-10':''}"><i class="fa-solid fa-chevron-up"></i></button>
+                             <button onclick="window.moveTrans('${t.id}', 1)" class="text-xs ${index===sortedItems.length-1?'opacity-10':''}"><i class="fa-solid fa-chevron-down"></i></button>
+                             <button onclick='window.prepareEditTrans("${t.id}", ${JSON.stringify(t)})' class="text-xs ml-1"><i class="fa-solid fa-pen"></i></button>
+                             <button onclick="window.deleteTrans('${t.id}')" class="text-xs">✕</button>
                         </div>
                     </div>
                     <p class="text-xs text-gray-500 mb-4 px-2">${t.note || '無備註'}</p>
@@ -140,17 +143,54 @@
             });
         }
 
+        window.moveTrans = async (id, direction) => {
+            const snapshot = await get(ref(db, 'takamatsu_trip/transport'));
+            const data = snapshot.val();
+            const items = Object.entries(data).map(([k, v]) => ({ id: k, ...v }));
+            items.sort((a, b) => (a.order || 0) - (b.order || 0));
+            const idx = items.findIndex(item => item.id === id);
+            if ((direction === -1 && idx > 0) || (direction === 1 && idx < items.length - 1)) {
+                const swapIdx = idx + direction;
+                const tempOrder = items[idx].order || 0;
+                items[idx].order = items[swapIdx].order || 0;
+                items[swapIdx].order = tempOrder;
+                if (items[idx].order === items[swapIdx].order) {
+                    items.forEach((item, i) => item.order = i);
+                    const temp = items[idx].order;
+                    items[idx].order = items[swapIdx].order;
+                    items[swapIdx].order = temp;
+                }
+                const updates = {};
+                items.forEach(item => { updates[`transport/${item.id}/order`] = item.order; });
+                update(ref(db, 'takamatsu_trip'), updates);
+            }
+        };
+
         window.setQuickName = (name) => { document.getElementById('new-trans-name').value = name; };
-        window.saveTrans = () => {
+        window.saveTrans = async () => {
             const name = document.getElementById('new-trans-name').value;
             const note = document.getElementById('new-trans-note').value;
             const url = document.getElementById('new-trans-url').value;
             if(!name) return;
-            if(currentTransEditId) { update(ref(db, `takamatsu_trip/transport/${currentTransEditId}`), { name, note, url }); currentTransEditId = null; document.getElementById('btn-save-trans').innerText = "確認增加"; }
-            else { push(ref(db, 'takamatsu_trip/transport'), { name, note, url }); }
+            if(currentTransEditId) {
+                update(ref(db, `takamatsu_trip/transport/${currentTransEditId}`), { name, note, url });
+                currentTransEditId = null;
+                document.getElementById('btn-save-trans').innerText = "確認增加";
+            } else {
+                const snapshot = await get(ref(db, 'takamatsu_trip/transport'));
+                const count = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
+                push(ref(db, 'takamatsu_trip/transport'), { name, note, url, order: count });
+            }
             ['new-trans-name','new-trans-note','new-trans-url'].forEach(id => document.getElementById(id).value = "");
         };
-        window.prepareEditTrans = (id, t) => { currentTransEditId = id; document.getElementById('new-trans-name').value = t.name; document.getElementById('new-trans-note').value = t.note; document.getElementById('new-trans-url').value = t.url; document.getElementById('btn-save-trans').innerText = "💾 儲存修改"; };
+        window.prepareEditTrans = (id, t) => { 
+            currentTransEditId = id; 
+            document.getElementById('new-trans-name').value = t.name; 
+            document.getElementById('new-trans-note').value = t.note; 
+            document.getElementById('new-trans-url').value = t.url; 
+            document.getElementById('btn-save-trans').innerText = "💾 儲存修改"; 
+            document.getElementById('trans-overlay').scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        };
         window.deleteTrans = (id) => { if(confirm("確定刪除？")) remove(ref(db, `takamatsu_trip/transport/${id}`)); };
         window.toggleOverlay = (id, show) => { const el = document.getElementById(id); if(show) { el.classList.remove('hidden'); document.body.style.overflow = 'hidden'; } else { el.classList.add('hidden'); document.body.style.overflow = 'auto'; } };
         window.saveDayNote = (day) => { update(ref(db, `takamatsu_trip/day_notes`), { [`day${day}`]: document.getElementById(`day-note-${day}`).value }); };
@@ -236,7 +276,13 @@
             <h2 class="text-2xl font-black text-[#B4A582]">📍 交通工具</h2>
             <button onclick="toggleOverlay('trans-overlay', false)" class="text-3xl text-gray-200">✕</button>
         </div>
+        
+        <div id="trans-list"></div>
+
+        <div class="my-10 border-t-2 border-dashed border-[#B4A582]/20"></div>
+
         <div class="bg-[#B4A582]/5 p-5 rounded-[2rem] border border-[#B4A582]/20 mb-10 input-minimal">
+            <p class="text-[10px] font-bold text-[#B4A582] mb-3 uppercase tracking-widest">新增交通路線</p>
             <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
                 <button onclick="setQuickName('JR線')" class="quick-btn shrink-0">JR線</button>
                 <button onclick="setQuickName('琴電')" class="quick-btn shrink-0">琴電</button>
@@ -248,7 +294,6 @@
             <input type="url" id="new-trans-url" placeholder="網址 (https://...)">
             <button id="btn-save-trans" onclick="saveTrans()" class="w-full bg-[#B4A582] text-white py-3 rounded-xl font-bold text-xs mt-4">確認增加</button>
         </div>
-        <div id="trans-list"></div>
     </div>
 
     <div id="expense-overlay" class="overlay hidden px-8 pt-8">
@@ -270,4 +315,3 @@
 
 </body>
 </html>
-
