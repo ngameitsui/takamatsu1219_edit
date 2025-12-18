@@ -12,17 +12,28 @@
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #FFFFFF; color: #333; overflow-x: hidden; }
         .yuan-font { font-family: 'Varela Round', 'Noto Sans TC', sans-serif; font-style: italic; font-weight: 900; }
         .din-font { font-family: 'Roboto Condensed', sans-serif; letter-spacing: -0.02em; }
-        .tab-box { border: 1.5px solid #E8E2D5; padding: 10px 5px; transition: all 0.3s; width: 85%; margin: 0 auto; border-radius: 12px; }
+        
+        /* 修改：日期分行顯示 */
+        .tab-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .tab-box { border: 1.5px solid #E8E2D5; padding: 8px 5px; transition: all 0.3s; width: 90%; margin: 0 auto; border-radius: 12px; }
         .active-tab .tab-box { border-color: #B4A582; background-color: #fdfbf7; }
         .active-tab { color: #B4A582 !important; }
+        
+        /* 修正：分頁層完全覆蓋且可滾動到底部 */
+        .overlay { 
+            position: fixed; 
+            inset: 0; 
+            background: #FFFFFF; /* 強制純白背景，不透明 */
+            z-index: 2000; 
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 120px; /* 確保能拉到最底 */
+        }
+        
         .timeline-container { position: relative; }
         .timeline-container::before { content: ''; position: absolute; left: 16px; top: 10px; bottom: 10px; width: 2px; background: #B4A582; opacity: 0.15; }
-        
-        /* 解決重疊：確保背景不透明且層級最高 */
-        .overlay { position: fixed; inset: 0; background: #FFFFFF; z-index: 2000; overflow-y: auto; height: 100vh; width: 100vw; }
         .input-minimal input { border: none !important; border-bottom: 1px solid #F0EBE0 !important; background: transparent !important; padding: 0.6rem 0 !important; font-size: 12px !important; outline: none; width: 100%; }
         .quick-btn { border: 1px solid #B4A582; color: #B4A582; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; transition: all 0.2s; }
-        .quick-btn:active { background: #B4A582; color: white; }
     </style>
 
     <script type="module">
@@ -54,11 +65,9 @@
         });
 
         function renderUI(data) {
-            // 備忘錄
             for(let d=1; d<=3; d++) {
                 document.getElementById(`day-note-${d}`).value = data.day_notes?.[`day${d}`] || "";
             }
-            // 行程渲染
             for (let day = 1; day <= 3; day++) {
                 const listEl = document.getElementById(`timeline-day${day}`);
                 const dayData = data.itinerary ? data.itinerary[`day${day}`] : null;
@@ -85,26 +94,24 @@
                                         <p class="flex items-start opacity-80"><i class="fa-solid fa-quote-left w-5 mt-1 opacity-30 text-[10px]"></i> <span class="flex-1">${item.note || '-'}</span></p>
                                     </div>
                                     <div class="flex gap-2">
-                                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.loc)}" target="_blank" class="flex-1 text-center py-2 bg-white border border-[#B4A582]/30 rounded-xl text-[#B4A582] font-bold shadow-sm">📍 導航</a>
-                                        ${hasUrl ? `<a href="${item.url}" target="_blank" class="flex-1 text-center py-2 bg-[#B4A582] rounded-xl text-white font-bold shadow-md">🔗 連結</a>` : ''}
+                                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.loc)}" target="_blank" class="flex-1 text-center py-2 bg-white border border-[#B4A582]/30 rounded-xl text-[#B4A582] font-bold shadow-sm text-xs">📍 導航</a>
+                                        ${hasUrl ? `<a href="${item.url}" target="_blank" class="flex-1 text-center py-2 bg-[#B4A582] rounded-xl text-white font-bold shadow-md text-xs">🔗 連結</a>` : ''}
                                     </div>
                                 </div>
                             </div>`;
                     });
                 }
             }
-
-            // 費用渲染 (同前，略作字體調整)
+            // 費用邏輯保留
             const logs = data.expense_logs ? Object.entries(data.expense_logs) : [];
             const logEl = document.getElementById('expense-logs');
             logEl.innerHTML = "";
-            logs.reverse().forEach(([id, log]) => {
-                logEl.innerHTML += `<div class="flex justify-between items-center py-4 border-b border-gray-50"><div class="text-[13px]"><span class="text-xs bg-[#B4A582]/10 text-[#B4A582] px-2 py-0.5 rounded-md mr-2 font-bold">${log.cat}</span><span class="text-gray-700 font-medium">${log.item}</span><p class="text-[10px] text-gray-300 mt-0.5">${log.payer} 支付</p></div><div class="flex items-center gap-4"><span class="font-bold text-[#B4A582] text-base din-font">¥${log.amount.toLocaleString()}</span><button onclick='window.prepareEditExpense("${id}", ${JSON.stringify(log)})' class="text-gray-200"><i class="fa-solid fa-pen text-[10px]"></i></button></div></div>`;
-            });
-            // 費用矩陣計算與渲染
             const categories = ['交通', '飲食', '購物', '住宿', '其他'];
             const matrix = categories.reduce((acc, cat) => { acc[cat] = { Mei: 0, Wing: 0 }; return acc; }, {});
-            logs.forEach(([id, log]) => { if(matrix[log.cat]) matrix[log.cat][log.payer] += log.amount; });
+            logs.reverse().forEach(([id, log]) => {
+                if(matrix[log.cat]) matrix[log.cat][log.payer] += log.amount;
+                logEl.innerHTML += `<div class="flex justify-between items-center py-4 border-b border-gray-50"><div class="text-[13px]"><span class="text-xs bg-[#B4A582]/10 text-[#B4A582] px-2 py-0.5 rounded-md mr-2 font-bold">${log.cat}</span><span class="text-gray-700 font-medium">${log.item}</span><p class="text-[10px] text-gray-300 mt-0.5">${log.payer} 支付</p></div><div class="flex items-center gap-4"><span class="font-bold text-[#B4A582] text-base din-font">¥${log.amount.toLocaleString()}</span><button onclick='window.prepareEditExpense("${id}", ${JSON.stringify(log)})' class="text-gray-200"><i class="fa-solid fa-pen text-[10px]"></i></button></div></div>`;
+            });
             let matrixHtml = `<table class="w-full text-center border-collapse"><thead><tr class="text-gray-400 border-b border-gray-100"><th class="py-2 text-left pl-2 font-normal text-xs">類別</th><th class="py-2 text-xs">Mei</th><th class="py-2 text-xs">Wing</th></tr></thead><tbody class="text-gray-600">`;
             categories.forEach(cat => { matrixHtml += `<tr class="border-b border-gray-50/50"><td class="py-4 font-bold text-left pl-2 text-sm">${cat}</td><td class="py-4 din-font text-sm">¥${matrix[cat].Mei.toLocaleString()}</td><td class="py-4 din-font text-sm">¥${matrix[cat].Wing.toLocaleString()}</td></tr>`; });
             const totalMei = Object.values(matrix).reduce((a, b) => a + b.Mei, 0);
@@ -113,7 +120,6 @@
             document.getElementById('expense-matrix').innerHTML = matrixHtml;
         }
 
-        // 交通管理渲染
         function renderTransport(transData) {
             const list = document.getElementById('trans-list');
             list.innerHTML = "";
@@ -122,52 +128,31 @@
                 list.innerHTML += `
                 <div class="bg-[#fdfbf7] p-5 rounded-[2rem] border border-[#B4A582]/15 mb-6">
                     <div class="flex justify-between items-center mb-3">
-                        <div class="flex items-center gap-3 text-[#B4A582]">
-                            <i class="fa-solid fa-route text-xl"></i>
-                            <h3 class="font-black text-lg">${t.name}</h3>
-                        </div>
+                        <div class="flex items-center gap-3 text-[#B4A582]"><i class="fa-solid fa-route text-xl"></i><h3 class="font-black text-lg">${t.name}</h3></div>
                         <div class="flex gap-4 text-gray-300">
                              <button onclick='window.prepareEditTrans("${id}", ${JSON.stringify(t)})' class="text-xs"><i class="fa-solid fa-pen"></i></button>
                              <button onclick="window.deleteTrans('${id}')" class="text-xs">✕</button>
                         </div>
                     </div>
-                    <p class="text-xs text-gray-500 mb-4 px-2 leading-relaxed">${t.note || '無備註'}</p>
+                    <p class="text-xs text-gray-500 mb-4 px-2">${t.note || '無備註'}</p>
                     ${hasUrl ? `<a href="${t.url}" target="_blank" class="block w-full text-center py-3 bg-[#B4A582] rounded-xl text-white font-bold text-xs shadow-md">🔗 開啟路線圖/連結</a>` : ''}
                 </div>`;
             });
         }
 
-        // 交通工具 Window Functions
         window.setQuickName = (name) => { document.getElementById('new-trans-name').value = name; };
         window.saveTrans = () => {
             const name = document.getElementById('new-trans-name').value;
             const note = document.getElementById('new-trans-note').value;
             const url = document.getElementById('new-trans-url').value;
             if(!name) return;
-            if(currentTransEditId) {
-                update(ref(db, `takamatsu_trip/transport/${currentTransEditId}`), { name, note, url });
-                currentTransEditId = null;
-                document.getElementById('btn-save-trans').innerText = "確認增加";
-            } else {
-                push(ref(db, 'takamatsu_trip/transport'), { name, note, url });
-            }
+            if(currentTransEditId) { update(ref(db, `takamatsu_trip/transport/${currentTransEditId}`), { name, note, url }); currentTransEditId = null; document.getElementById('btn-save-trans').innerText = "確認增加"; }
+            else { push(ref(db, 'takamatsu_trip/transport'), { name, note, url }); }
             ['new-trans-name','new-trans-note','new-trans-url'].forEach(id => document.getElementById(id).value = "");
         };
-        window.prepareEditTrans = (id, t) => {
-            currentTransEditId = id;
-            document.getElementById('new-trans-name').value = t.name;
-            document.getElementById('new-trans-note').value = t.note;
-            document.getElementById('new-trans-url').value = t.url;
-            document.getElementById('btn-save-trans').innerText = "💾 儲存修改";
-        };
-        window.deleteTrans = (id) => { if(confirm("確定刪除此交通？")) remove(ref(db, `takamatsu_trip/transport/${id}`)); };
-
-        // 其餘通用的 Window Functions
-        window.toggleOverlay = (id, show) => {
-            const el = document.getElementById(id);
-            if(show) { el.classList.remove('hidden'); document.body.style.overflow = 'hidden'; } 
-            else { el.classList.add('hidden'); document.body.style.overflow = 'auto'; }
-        };
+        window.prepareEditTrans = (id, t) => { currentTransEditId = id; document.getElementById('new-trans-name').value = t.name; document.getElementById('new-trans-note').value = t.note; document.getElementById('new-trans-url').value = t.url; document.getElementById('btn-save-trans').innerText = "💾 儲存修改"; };
+        window.deleteTrans = (id) => { if(confirm("確定刪除？")) remove(ref(db, `takamatsu_trip/transport/${id}`)); };
+        window.toggleOverlay = (id, show) => { const el = document.getElementById(id); if(show) { el.classList.remove('hidden'); document.body.style.overflow = 'hidden'; } else { el.classList.add('hidden'); document.body.style.overflow = 'auto'; } };
         window.saveDayNote = (day) => { update(ref(db, `takamatsu_trip/day_notes`), { [`day${day}`]: document.getElementById(`day-note-${day}`).value }); };
         window.addItem = (day) => {
             const vals = ['time','loc','trans','note','url'].reduce((acc, k) => { acc[k] = document.getElementById(`${k}-day${day}`).value; return acc; }, {});
@@ -176,11 +161,7 @@
             else { push(ref(db, `takamatsu_trip/itinerary/day${day}`), vals); }
             ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = "");
         };
-        window.prepareEdit = (day, id, item) => {
-            currentEditId[day] = id;
-            ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = item[k] || "");
-            document.getElementById(`btn-save-day${day}`).innerText = "💾 儲存修改";
-        };
+        window.prepareEdit = (day, id, item) => { currentEditId[day] = id; ['time','loc','trans','note','url'].forEach(k => document.getElementById(`${k}-day${day}`).value = item[k] || ""); document.getElementById(`btn-save-day${day}`).innerText = "💾 儲存修改"; };
         window.deleteItem = (day, id) => { if(confirm("刪除行程？")) remove(ref(db, `takamatsu_trip/itinerary/day${day}/${id}`)); };
         window.addExpense = () => {
             const payer = document.getElementById('payerSelect').value, cat = document.getElementById('catSelect').value, item = document.getElementById('expItem').value || "支出", amount = parseFloat(document.getElementById('expAmount').value);
@@ -189,17 +170,8 @@
             else { push(ref(db, 'takamatsu_trip/expense_logs'), { payer, cat, item, amount }); }
             document.getElementById('expItem').value = ""; document.getElementById('expAmount').value = "";
         };
-        window.prepareEditExpense = (id, log) => {
-            currentExpenseEditId = id;
-            document.getElementById('payerSelect').value = log.payer; document.getElementById('catSelect').value = log.cat; document.getElementById('expItem').value = log.item; document.getElementById('expAmount').value = log.amount;
-            document.getElementById('btn-save-expense').innerText = "💾 儲存修改";
-        };
-        window.switchTab = (day) => {
-            document.querySelectorAll('.day-content').forEach(el => el.classList.add('hidden'));
-            document.getElementById(`day${day}-panel`).classList.remove('hidden');
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active-tab'));
-            event.currentTarget.classList.add('active-tab');
-        };
+        window.prepareEditExpense = (id, log) => { currentExpenseEditId = id; document.getElementById('payerSelect').value = log.payer; document.getElementById('catSelect').value = log.cat; document.getElementById('expItem').value = log.item; document.getElementById('expAmount').value = log.amount; document.getElementById('btn-save-expense').innerText = "💾 儲存修改"; };
+        window.switchTab = (day) => { document.querySelectorAll('.day-content').forEach(el => el.classList.add('hidden')); document.getElementById(`day${day}-panel`).classList.remove('hidden'); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active-tab')); event.currentTarget.classList.add('active-tab'); };
     </script>
 </head>
 <body class="max-w-md mx-auto">
@@ -219,18 +191,20 @@
     </header>
 
     <div class="flex mb-8 w-full sticky top-0 bg-white z-20 pt-2 pb-4">
-        <button onclick="switchTab(1)" class="tab-btn active-tab flex-1 text-center"><div class="tab-box"><span class="day-title font-bold">Day 1</span><span class="day-date din-font">12/19 (Fri)</span></div></button>
-        <button onclick="switchTab(2)" class="tab-btn flex-1 text-center text-gray-400"><div class="tab-box"><span class="day-title font-bold">Day 2</span><span class="day-date din-font">12/20 (Sat)</span></div></button>
-        <button onclick="switchTab(3)" class="tab-btn flex-1 text-center text-gray-400"><div class="tab-box"><span class="day-title font-bold">Day 3</span><span class="day-date din-font">12/21 (Sun)</span></div></button>
+        <button onclick="switchTab(1)" class="tab-btn active-tab flex-1">
+            <div class="tab-box"><span class="day-title font-bold text-base">Day 1</span><span class="day-date din-font text-[10px] block mt-1">12/19 (Fri)</span></div>
+        </button>
+        <button onclick="switchTab(2)" class="tab-btn flex-1 text-gray-400">
+            <div class="tab-box"><span class="day-title font-bold text-base">Day 2</span><span class="day-date din-font text-[10px] block mt-1">12/20 (Sat)</span></div>
+        </button>
+        <button onclick="switchTab(3)" class="tab-btn flex-1 text-gray-400">
+            <div class="tab-box"><span class="day-title font-bold text-base">Day 3</span><span class="day-date din-font text-[10px] block mt-1">12/21 (Sun)</span></div>
+        </button>
     </div>
 
     <main class="px-6 pb-40">
         <script>
-            const dayMeta = [
-                { id: 1, w: '13', l: '9', r: '0', icon: 'fa-sun' },
-                { id: 2, w: '12', l: '8', r: '20', icon: 'fa-cloud-sun' },
-                { id: 3, w: '11', l: '7', r: '10', icon: 'fa-sun' }
-            ];
+            const dayMeta = [{ id: 1, w: '13', l: '9', r: '0', icon: 'fa-sun' },{ id: 2, w: '12', l: '8', r: '20', icon: 'fa-cloud-sun' },{ id: 3, w: '11', l: '7', r: '10', icon: 'fa-sun' }];
             dayMeta.forEach(d => {
                 document.write(`
                 <div id="day${d.id}-panel" class="day-content ${d.id===1?'':'hidden'}">
@@ -257,12 +231,11 @@
         </script>
     </main>
 
-    <div id="trans-overlay" class="overlay hidden p-6">
+    <div id="trans-overlay" class="overlay hidden px-6 pt-6">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-black text-[#B4A582]">📍 交通工具</h2>
             <button onclick="toggleOverlay('trans-overlay', false)" class="text-3xl text-gray-200">✕</button>
         </div>
-        
         <div class="bg-[#B4A582]/5 p-5 rounded-[2rem] border border-[#B4A582]/20 mb-10 input-minimal">
             <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
                 <button onclick="setQuickName('JR線')" class="quick-btn shrink-0">JR線</button>
@@ -275,14 +248,12 @@
             <input type="url" id="new-trans-url" placeholder="網址 (https://...)">
             <button id="btn-save-trans" onclick="saveTrans()" class="w-full bg-[#B4A582] text-white py-3 rounded-xl font-bold text-xs mt-4">確認增加</button>
         </div>
-
         <div id="trans-list"></div>
-        <div class="h-20"></div>
     </div>
 
-    <div id="expense-overlay" class="overlay hidden p-8">
+    <div id="expense-overlay" class="overlay hidden px-8 pt-8">
         <div class="flex justify-between items-center mb-10">
-            <h2 class="text-2xl font-black text-[#B4A582]">💰 費用</h2>
+            <h2 class="text-2xl font-black text-[#B4A582]">💰 費用清算</h2>
             <button onclick="toggleOverlay('expense-overlay', false)" class="text-3xl text-gray-200">✕</button>
         </div>
         <div id="expense-matrix" class="mb-10 p-6 bg-[#fdfbf7] rounded-[2rem] border border-[#B4A582]/10 shadow-inner"></div>
